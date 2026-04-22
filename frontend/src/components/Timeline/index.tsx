@@ -9,6 +9,11 @@ function formatTime(timeStr: string): string {
   return timeStr.slice(0, 5); // 只取 HH:MM
 }
 
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  return `${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
 function formatDuration(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
@@ -37,7 +42,10 @@ export function RouteTimeline({ legs }: RouteTimelineProps) {
         <div key={index} className="timeline-leg">
           {/* 出发信息 */}
           <div className="timeline-point timeline-point--departure">
-            <div className="timeline-point__time">{formatTime(leg.departure_time)}</div>
+            <div className="timeline-point__datetime">
+              <span className="timeline-point__date">{formatDate(leg.departure_date)}</span>
+              <span className="timeline-point__time">{formatTime(leg.departure_time)}</span>
+            </div>
             <div className="timeline-point__station">{leg.from_station}</div>
             <div className="timeline-point__city">{leg.from_city}</div>
           </div>
@@ -60,7 +68,10 @@ export function RouteTimeline({ legs }: RouteTimelineProps) {
 
           {/* 到达信息 */}
           <div className="timeline-point timeline-point--arrival">
-            <div className="timeline-point__time">{formatTime(leg.arrival_time)}</div>
+            <div className="timeline-point__datetime">
+              <span className="timeline-point__date">{formatDate(leg.arrival_date)}</span>
+              <span className="timeline-point__time">{formatTime(leg.arrival_time)}</span>
+            </div>
             <div className="timeline-point__station">{leg.to_station}</div>
             <div className="timeline-point__city">{leg.to_city}</div>
           </div>

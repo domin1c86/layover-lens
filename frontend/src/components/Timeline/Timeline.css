@@ -13,11 +13,22 @@
   padding: 8px 0;
 }
 
+.timeline-point__datetime {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 70px;
+}
+
+.timeline-point__date {
+  font-size: 12px;
+  color: #666;
+}
+
 .timeline-point__time {
   font-size: 18px;
   font-weight: 600;
   color: #333;
-  min-width: 50px;
 }
 
 .timeline-point__station {

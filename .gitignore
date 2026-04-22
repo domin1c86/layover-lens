@@ -4,3 +4,11 @@ docs/
 CLAUDE.md
 AGENTS.md
 plan.md
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.venv39/
+node_modules/
+dist/

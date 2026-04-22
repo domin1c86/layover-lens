@@ -21,6 +21,11 @@ function formatPrice(price: number): string {
   return `¥${price.toFixed(0)}`;
 }
 
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  return `${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
 export function RouteCard({ route, index }: RouteCardProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -53,8 +58,8 @@ export function RouteCard({ route, index }: RouteCardProps) {
           <div className="route-card__preview">
             <span className="route-card__preview-icon">🕐</span>
             <span>
-              {route.legs[0].departure_time.slice(0, 5)} 出发 ·
-              {route.legs[route.legs.length - 1].arrival_time.slice(0, 5)} 到达
+              {formatDate(route.legs[0].departure_date)} {route.legs[0].departure_time.slice(0, 5)} 出发 · {' '}
+              {formatDate(route.legs[route.legs.length - 1].arrival_date)} {route.legs[route.legs.length - 1].arrival_time.slice(0, 5)} 到达
             </span>
           </div>
         )}

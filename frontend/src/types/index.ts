@@ -26,7 +26,9 @@ export interface Leg {
   to_city: string;
   from_station: string;
   to_station: string;
+  departure_date: string;
   departure_time: string;
+  arrival_date: string;
   arrival_time: string;
   duration_minutes: number;
   price: number;
