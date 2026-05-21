@@ -1,10 +1,13 @@
 import HomePage from './pages/HomePage'
+import { ThemeProvider } from './context/ThemeContext'
 
 function App() {
   return (
-    <div className="app">
-      <HomePage />
-    </div>
+    <ThemeProvider>
+      <div className="app">
+        <HomePage />
+      </div>
+    </ThemeProvider>
   )
 }
 
