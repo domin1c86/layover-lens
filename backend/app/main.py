@@ -34,7 +34,10 @@ def root() -> dict[str, str]:
 
 @app.get("/health")
 def health_check() -> dict[str, str]:
+    search_service = get_search_service()
     return {
         "status": "ok",
-        "data_source": get_search_service().describe_source(),
+        "data_source": search_service.describe_source(),
+        "planner_backend": search_service.describe_planner(),
+        "ai_search_backend": search_service.describe_ai_search(),
     }

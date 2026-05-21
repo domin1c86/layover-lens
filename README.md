@@ -27,5 +27,5 @@ After startup:
 The backend test suite passes under the Python 3.9.6 environment:
 
 ```powershell
-& 'D:\Coding\layover-lens\backend\.venv39\Scripts\python.exe' -m pytest tests -v
+   .\layover-lens\backend\.venv39\Scripts\python.exe' -m pytest tests -v
 ```

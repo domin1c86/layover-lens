@@ -20,6 +20,7 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
     )
     data_source: str = Field(default="mock", alias="DATA_SOURCE")
+    route_planner_backend: str = Field(default="auto", alias="ROUTE_PLANNER_BACKEND")
     cors_origins: list[str] = Field(
         default=["http://localhost:3000", "http://127.0.0.1:3000"],
         alias="CORS_ORIGINS",
@@ -38,6 +39,20 @@ class Settings(BaseSettings):
     max_total_duration_minutes: int = Field(
         default=24 * 60,
         alias="MAX_TOTAL_DURATION_MINUTES",
+    )
+    deepseek_api_key: str = Field(default="", alias="DEEPSEEK_API_KEY")
+    deepseek_base_url: str = Field(
+        default="https://api.deepseek.com",
+        alias="DEEPSEEK_BASE_URL",
+    )
+    deepseek_model: str = Field(default="deepseek-v4-pro", alias="DEEPSEEK_MODEL")
+    deepseek_timeout_seconds: float = Field(
+        default=30.0,
+        alias="DEEPSEEK_TIMEOUT_SECONDS",
+    )
+    ai_search_max_history_messages: int = Field(
+        default=12,
+        alias="AI_SEARCH_MAX_HISTORY_MESSAGES",
     )
 
 

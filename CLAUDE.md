@@ -4,9 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Layover Lens (中转助手)** is a transit assistance tool that helps travelers find optimal transfer routes between cities using flights and trains. It supports multi-modal transportation search with customizable optimization criteria (price, time, transfers, or balanced).
-
-**Current Status**: Design phase completed, implementation not started. See `plan.md` for detailed execution steps.
+**Layover Lens (中转助手)** is a multi-modal transit assistant for searching flight and train transfer routes between cities. It supports optimizing for price, time, transfer count, or balanced scoring, with both standard form-based search and AI-powered natural language search.
 
 ## Architecture
 
@@ -14,164 +12,112 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Frontend (React + TypeScript)                              │
-│  - Simple/Advanced/AI search modes                          │
+│  Frontend (React + TypeScript + Vite)                       │
+│  - Simple search mode with city/date/optimization inputs    │
 │  - Card-based results with timeline visualization           │
 │  - Port: 3000                                               │
 ├─────────────────────────────────────────────────────────────┤
 │  API Gateway (Python FastAPI)                               │
-│  - Routes: /api/v1/search, /api/v1/cities                   │
+│  - Routes: /api/v1/search, /api/v1/search/ai, /api/v1/cities│
 │  - Port: 8000                                               │
 ├─────────────────────────────────────────────────────────────┤
 │  Core Modules                                               │
-│  ├─ Path Planner (C++17 + pybind11)                        │
-│  │   Multi-objective graph algorithm (Dijkstra/A*)         │
-│  ├─ Data Source (Python)                                    │
-│  │   Pluggable: Mock → Scraper → API                       │
-│  └─ AI Assistant (Python)                                   │
-│      Natural language search guidance                      │
+│  ├─ Path Planner (Python + Optional C++17 via pybind11)    │
+│  │   Multi-objective graph algorithm with filtering         │
+│  ├─ Data Source (Pluggable: Mock → MySQL → Scraper/API)    │
+│  └─ AI Assistant (LLM-based natural language parsing)      │
 ├─────────────────────────────────────────────────────────────┤
-│  MySQL 8.0 - Cities, stations, routes, schedules           │
+│  MySQL 8.0 - Cities, stations, routes with 3-day schedule  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ### Key Design Decisions
 
-1. **C++ Path Planner**: Performance-critical routing engine exposed to Python via pybind11
-2. **Pluggable Data Sources**: Abstract `DataSourceBase` allows swapping implementations without changing business logic
-3. **Multi-objective Optimization**: Supports optimizing for price, time, transfer count, or weighted combination
+1. **Dual Planner Backend**: `ROUTE_PLANNER_BACKEND=python` (default) or `cpp` (C++17 via pybind11 for performance)
+2. **Pluggable Data Sources**: `DATA_SOURCE=mock|mysql` - swap via environment variable without code changes
+3. **Multi-objective Optimization**: Price, time, transfer count, or weighted balanced scoring
+4. **Rich Filtering**: Time ranges, transfer city constraints, transport type preferences, price/duration limits
 
 ## Common Commands
 
-### Development Environment (Docker Compose)
+### Development (Docker Compose)
 
 ```bash
-# Start all services (frontend, backend, mysql)
-docker-compose up -d
+# Start all services (builds if needed)
+docker compose up --build
 
 # View logs
-docker-compose logs -f [frontend|backend|mysql]
+docker compose logs -f [frontend|backend|mysql]
 
-# Stop all services
-docker-compose down
+# Restart specific service
+docker compose restart backend
 
-# Clean restart (removes data volumes)
-docker-compose down -v && docker-compose up --build -d
+# Clean restart with fresh database
+docker compose down -v && docker compose up --build
 ```
 
-### Frontend (React + Vite)
+### Backend Testing
 
 ```bash
-# Enter frontend container
-docker-compose exec frontend sh
-
-# Install dependencies (if package.json changes)
-npm install
-
-# Run dev server (already running via docker-compose)
-npm run dev
-
-# Build for production
-npm run build
-```
-
-### Backend (FastAPI)
-
-```bash
-# Enter backend container
-docker-compose exec backend bash
-
-# Run all tests
-python -m pytest tests/ -v
+# Run all tests inside container
+docker compose exec backend python -m pytest tests/ -v
 
 # Run specific test
-python -m pytest tests/test_search.py::test_search_endpoint -v
+docker compose exec backend python -m pytest tests/test_search.py::test_search_endpoint_returns_ranked_routes -v
 
-# API documentation (available when running)
-# http://localhost:8000/docs (Swagger)
-# http://localhost:8000/redoc (ReDoc)
+# Run with local Python 3.9 (as documented in README)
+.\.venv39\Scripts\python.exe -m pytest tests -v
 ```
 
-### C++ Path Planner
+### C++ Planner Build
 
 ```bash
-# Build the C++ module (inside backend container)
+# Inside backend container
 cd planner
 mkdir -p build && cd build
 cmake ..
 make
 
-# The compiled .so file should be importable from Python
-python -c "import route_planner; print('OK')"
+# Verify import
+python -c "import route_planner; print('C++ module loaded')"
 ```
 
 ### Database
 
 ```bash
-# Connect to MySQL (inside mysql container)
-docker-compose exec mysql mysql -uroot -pdevpassword layover_lens
+# Connect to MySQL
+docker compose exec mysql mysql -uroot -pdevpassword layover_lens
 
-# Re-initialize database (warning: destroys data)
-docker-compose down -v
-docker-compose up -d mysql
+# Check seed data loaded
+SELECT COUNT(*) FROM routes;  -- Expected: 795 (265 routes x 3 days)
 ```
+
+## API Endpoints
+
+- `POST /api/v1/search` - Main search with filters (see `test_search.py` for examples)
+- `POST /api/v1/search/ai` - Natural language search (`query: "北京到上海明天最便宜"`)
+- `GET /api/v1/cities?keyword=北京` - City search
+- `GET /health` - Health check showing data_source and planner_backend
+
+See `backend/tests/test_search.py` for comprehensive usage examples of all filters.
 
 ## Project Structure
 
-```
-├── docker-compose.yml          # Development orchestration
-├── plan.md                     # Detailed implementation plan
-├── frontend/                   # React + TypeScript
-│   ├── src/
-│   │   ├── components/         # SearchForm, ResultCards, Timeline
-│   │   ├── pages/              # HomePage
-│   │   ├── services/           # API clients
-│   │   └── types/              # TypeScript definitions
-│   └── package.json
-├── backend/                    # Python FastAPI
-│   ├── app/
-│   │   ├── main.py             # FastAPI entry point
-│   │   ├── routers/            # API route handlers
-│   │   └── data_source/        # Data adapters (mock/scraper/api)
-│   ├── planner/                # C++ path planning module
-│   │   ├── planner.h/cpp       # Core algorithm
-│   │   ├── bindings.cpp        # pybind11 bindings
-│   │   └── CMakeLists.txt
-│   └── tests/
-├── database/
-│   └── init.sql                # Schema + mock data
-└── docs/superpowers/
-    ├── specs/                  # Design specification
-    └── plans/                  # Detailed implementation plan
-```
+Key files for understanding the architecture:
 
-## Key Technologies
+- `backend/app/schemas.py` - API request/response models with validation
+- `backend/app/services/route_planner.py` - Python planner + PlanningConstraints logic
+- `backend/app/services/search_service.py` - Service layer, data source integration
+- `backend/app/data_source/` - Data source abstraction and implementations
+- `backend/planner/` - C++ planner source (planner.cpp, bindings.cpp)
+- `frontend/src/types/index.ts` - TypeScript type definitions
+- `database/init.sql` - Schema + 3 days of seed data (2026-04-22 to 2026-04-24)
 
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| Frontend | React 18 + TypeScript 5 | UI components |
-| Build | Vite 5 | Dev server & bundling |
-| Backend | FastAPI 0.109 | REST API |
-| Database | MySQL 8.0 | Data persistence |
-| Algorithm | C++17 | Path planning performance |
-| Binding | pybind11 2.11 | C++ ↔ Python interop |
-| Testing | pytest | Backend tests |
+## Configuration
 
-## Testing Strategy
-
-- **Backend**: pytest with FastAPI TestClient
-- **Manual**: HTTP test file at `frontend/test-search.http`
-- **API Docs**: Auto-generated Swagger at `/docs`
-
-## Documentation
-
-- **Execution Plan**: `plan.md` - Step-by-step implementation guide
-- **Design Spec**: `docs/superpowers/specs/2026-04-09-layover-lens-design.md`
-- **Detailed Plan**: `docs/superpowers/plans/2026-04-09-layover-lens-mvp.md`
-
-## Implementation Notes
-
-1. **Not Yet Implemented**: This project is in the planning phase. All code structure above represents the planned architecture.
-2. **Start Implementation**: Follow `plan.md` starting from "阶段一：环境搭建"
-3. **Multi-language Build**: Backend Docker image includes gcc/g++/cmake for compiling the C++ planner module
-4. **Data Source Strategy**: Start with MockAdapter, migrate to ScraperAdapter, then ApiAdapter as the project matures
+Environment variables (set in docker-compose.yml or .env):
+- `DATA_SOURCE=mock|mysql` - Data source type
+- `ROUTE_PLANNER_BACKEND=python|cpp` - Planner implementation
+- `DATABASE_URL` - MySQL connection string
+- `MAX_ROUTES` - Default: 8
+- `DEFAULT_MAX_TRANSFERS` - Default: 2

@@ -1,4 +1,4 @@
--- 中转助手 - 数据库初始化脚本（扩充版）
+-- 中转助手 - 数据库初始化脚本（扩充）
 SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS cities (

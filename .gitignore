@@ -3,6 +3,7 @@
 docs/
 CLAUDE.md
 AGENTS.md
+DESIGN.md
 plan.md
 
 __pycache__/
