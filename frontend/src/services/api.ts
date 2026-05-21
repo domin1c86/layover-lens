@@ -1,5 +1,12 @@
 import axios from 'axios';
-import type { SearchRequest, SearchResponse, CityListResponse, City } from '../types';
+import type {
+  SearchRequest,
+  SearchResponse,
+  CityListResponse,
+  City,
+  AiSessionResponse,
+  AiConfirmRequest,
+} from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -21,9 +28,35 @@ export const searchApi = {
 
 // 城市 API
 export const cityApi = {
-  getCities: async (): Promise<City[]> => {
-    const response = await apiClient.get<CityListResponse>('/cities');
+  getCities: async (keyword?: string): Promise<City[]> => {
+    const response = await apiClient.get<CityListResponse>('/cities', {
+      params: keyword ? { keyword } : undefined,
+    });
     return response.data.cities;
+  },
+};
+
+// AI 搜索 API
+export const aiSearchApi = {
+  createSession: async (message: string): Promise<AiSessionResponse> => {
+    const response = await apiClient.post<AiSessionResponse>('/search/ai/sessions', { message });
+    return response.data;
+  },
+
+  sendMessage: async (sessionId: string, message: string): Promise<AiSessionResponse> => {
+    const response = await apiClient.post<AiSessionResponse>(
+      `/search/ai/sessions/${sessionId}/messages`,
+      { message }
+    );
+    return response.data;
+  },
+
+  confirm: async (sessionId: string, confirmed: boolean): Promise<AiSessionResponse> => {
+    const response = await apiClient.post<AiSessionResponse>(
+      `/search/ai/sessions/${sessionId}/confirm`,
+      { confirmed } as AiConfirmRequest
+    );
+    return response.data;
   },
 };
 

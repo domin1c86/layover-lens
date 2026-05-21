@@ -42,6 +42,8 @@ export interface RoutePlan {
   total_price: number;
   total_duration_minutes: number;
   transfer_count: number;
+  score?: number;
+  tag?: string;
   legs: Leg[];
 }
 
@@ -52,15 +54,51 @@ export interface SearchRequest {
   travel_date: string;
   optimization_target: OptimizationTarget;
   max_transfers?: number;
+  preferred_transport_types?: TransportType[];
+  max_price?: number;
+  max_total_duration_minutes?: number;
+  excluded_cities?: string[];
+  required_transfer_cities?: string[];
+  departure_time_range?: { start: string; end: string };
+  arrival_time_range?: { start: string; end: string };
+  allow_overnight?: boolean;
 }
 
 // 搜索响应
 export interface SearchResponse {
+  search_id?: string;
   routes: RoutePlan[];
   total_count: number;
+  total?: number;
 }
 
 // 城市列表响应
 export interface CityListResponse {
   cities: City[];
+}
+
+// AI 消息
+export interface AiMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+// AI 会话响应
+export interface AiSessionResponse {
+  session_id: string;
+  status: 'collecting' | 'awaiting_confirmation' | 'completed';
+  assistant_message: string;
+  conversation: AiMessage[];
+  parsed_request: Partial<SearchRequest>;
+  final_request: SearchRequest | null;
+  missing_fields: string[];
+  summary: string;
+  ready_for_confirmation: boolean;
+  search_executed: boolean;
+  search_response: SearchResponse | null;
+}
+
+// AI 确认请求
+export interface AiConfirmRequest {
+  confirmed: boolean;
 }

@@ -1,0 +1,186 @@
+/* ========================================
+   DESIGN TOKENS
+   ======================================== */
+:root {
+  --primary: #ff385c;
+  --primary-active: #e00b41;
+  --primary-disabled: #ffd1da;
+  --ink: #222222;
+  --body: #3f3f3f;
+  --muted: #6a6a6a;
+  --muted-soft: #929292;
+  --hairline: #dddddd;
+  --hairline-soft: #ebebeb;
+  --border-strong: #c1c1c1;
+  --canvas: #ffffff;
+  --surface-soft: #f7f7f7;
+  --surface-strong: #f2f2f2;
+  --on-primary: #ffffff;
+  --on-dark: #ffffff;
+
+  --shadow-card: rgba(0, 0, 0, 0.02) 0 0 0 1px, rgba(0, 0, 0, 0.04) 0 2px 6px 0, rgba(0, 0, 0, 0.1) 0 4px 8px 0;
+  --shadow-hover: rgba(0, 0, 0, 0.04) 0 0 0 1px, rgba(0, 0, 0, 0.08) 0 4px 12px 0, rgba(0, 0, 0, 0.15) 0 8px 16px 0;
+
+  --font-family: 'MiSans', 'Inter', -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+
+  --rounded-sm: 8px;
+  --rounded-md: 14px;
+  --rounded-full: 9999px;
+
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-base: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-section: 64px;
+}
+
+/* ========================================
+   RESET & BASE
+   ======================================== */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  color: var(--ink);
+  background-color: var(--canvas);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+input, select {
+  font-family: inherit;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 14px;
+  width: 100%;
+}
+
+/* ========================================
+   LAYOUT UTILITIES
+   ======================================== */
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 80px;
+}
+
+@media (max-width: 1128px) {
+  .container { padding: 0 40px; }
+}
+@media (max-width: 744px) {
+  .container { padding: 0 24px; }
+}
+
+/* ========================================
+   KEYFRAME ANIMATIONS
+   ======================================== */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes dropExpand {
+  0% {
+    transform: scale(0) translateY(-20px);
+    opacity: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    top: -4px;
+    right: 16px;
+  }
+  25% {
+    transform: scale(1) translateY(4px);
+    opacity: 1;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+    width: var(--surface-width);
+    height: var(--surface-height);
+    border-radius: 14px;
+    top: 0;
+    right: 0;
+  }
+}
+
+@keyframes dropCollapse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+    width: var(--surface-width);
+    height: var(--surface-height);
+    border-radius: 14px;
+    top: 0;
+    right: 0;
+  }
+  100% {
+    transform: scale(0);
+    opacity: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    top: -4px;
+    right: 16px;
+  }
+}
+
+@keyframes contentFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes contentFadeOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-4px); }
+}
+
+/* ========================================
+   VISIBILITY HELPERS
+   ======================================== */
+.hidden {
+  display: none !important;
+}
+
+/* ========================================
+   DARK MODE
+   ======================================== */
+html[data-theme="dark"] {
+  --canvas: #1a1a1a;
+  --ink: #f0f0f0;
+  --body: #d0d0d0;
+  --muted: #888888;
+  --muted-soft: #666666;
+  --surface-soft: #2a2a2a;
+  --surface-strong: #333333;
+  --hairline: #444444;
+  --hairline-soft: #3a3a3a;
+  --border-strong: #555555;
+}
+
+html[data-theme="dark"] .route-card,
+html[data-theme="dark"] .search-bar,
+html[data-theme="dark"] .icon-btn {
+  background: #242424;
+}
+
+html[data-theme="dark"] .search-bar {
+  border-color: var(--hairline);
+}
