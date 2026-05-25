@@ -82,6 +82,7 @@ class SearchRequest(BaseModel):
         validation_alias=AliasChoices("optimization_target", "optimize"),
     )
     max_transfers: Optional[int] = Field(default=None, ge=0, le=4)
+    min_transfers: Optional[int] = Field(default=None, ge=0, le=4)
     preferred_transport_types: Optional[list[TransportType]] = None
     max_price: Optional[float] = Field(default=None, ge=0)
     max_total_duration_minutes: Optional[int] = Field(default=None, ge=1)

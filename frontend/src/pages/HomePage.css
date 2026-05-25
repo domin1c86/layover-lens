@@ -4,6 +4,101 @@
   min-height: 100vh;
 }
 
+.home-page__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 100vh;
+}
+
+/* ========================================
+   SEARCH BAR
+   ======================================== */
+.home-page__search-bar {
+  padding-top: 4px;
+  padding-bottom: var(--space-base);
+  position: sticky;
+  top: 80px;
+  background: #faf9f5;
+  z-index: 90;
+  transition: max-height 0.35s ease 0.1s, padding 0.35s ease 0.1s, box-shadow 0.35s ease;
+  max-height: 120px;
+  overflow: visible;
+  box-shadow: var(--shadow-card);
+}
+
+/* --- Content disappears first --- */
+.home-page__search-bar.compact .search-bar__segment,
+.home-page__search-bar.compact .search-bar__orb,
+.home-page__search-bar.compact .advanced-search-toggle,
+.home-page__search-bar.compact .advanced-search {
+  opacity: 0;
+  transition: opacity 0.08s ease;
+}
+
+/* --- Shell fades out after content --- */
+.home-page__search-bar.compact .search-bar {
+  transform: scale(0.85) translateY(-20px);
+  opacity: 0;
+  transition: transform 0.3s ease 0.08s, opacity 0.2s ease 0.15s;
+}
+
+/* --- Expand: shell fades in first --- */
+.home-page__search-bar:not(.compact) .search-bar {
+  opacity: 1;
+  transform: none;
+  transition: transform 0.35s ease 0.1s, opacity 0.2s ease 0.15s;
+}
+
+/* --- Expand: content appears after shell --- */
+.home-page__search-bar:not(.compact) .search-bar__segment,
+.home-page__search-bar:not(.compact) .search-bar__orb,
+.home-page__search-bar:not(.compact) .advanced-search-toggle {
+  opacity: 1;
+  transition: opacity 0.15s ease 0.35s;
+}
+
+.home-page__search-bar.compact {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  pointer-events: none;
+  overflow: visible;
+  transition: max-height 0.3s ease 0.15s, padding 0.3s ease 0.15s, box-shadow 0.3s ease;
+  box-shadow: none;
+}
+
+@media (max-width: 744px) {
+  .home-page__search-bar.compact {
+    max-height: 120px;
+    padding-top: 4px;
+    padding-bottom: var(--space-base);
+    pointer-events: auto;
+    box-shadow: var(--shadow-card);
+  }
+
+  .home-page__search-bar.compact .search-bar {
+    transform: none;
+    opacity: 1;
+  }
+
+  .home-page__search-bar.compact .search-bar__segment,
+  .home-page__search-bar.compact .search-bar__orb,
+  .home-page__search-bar.compact .advanced-search-toggle,
+  .home-page__search-bar.compact .advanced-search {
+    opacity: 1;
+  }
+}
+
 .home-page__content {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-page__tab-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import type { SearchRequest, SearchResponse } from '../../types';
 import { aiSearchApi } from '../../services/api';
 import AiChatArea, { type AiChatMessage } from './AiChatArea';
@@ -42,11 +43,16 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
   const [error, setError] = useState('');
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
   const editTitleRef = useRef(editTitle);
   editTitleRef.current = editTitle;
 
   const startEdit = (session: Session) => {
+    if (confirmingDeleteId) {
+      cancelDelete();
+    }
     setEditingSessionId(session.id);
     setEditTitle(session.title);
   };
@@ -63,7 +69,41 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
 
   const cancelEdit = () => {
     setEditingSessionId(null);
+    setEditTitle('');
   };
+
+  const cancelDelete = () => {
+    setConfirmingDeleteId(null);
+  };
+
+  const handleFirstDeleteClick = (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    if (editingSessionId) {
+      cancelEdit();
+    }
+    setConfirmingDeleteId(sessionId);
+  };
+
+  const handleTrashClick = (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    setDeletingId(sessionId);
+    setConfirmingDeleteId(null);
+    setTimeout(() => {
+      deleteSession(sessionId);
+      setDeletingId((prev) => (prev === sessionId ? null : prev));
+    }, 600);
+  };
+
+  useEffect(() => {
+    if (!confirmingDeleteId) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        cancelDelete();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [confirmingDeleteId]);
 
   useEffect(() => {
     if (editingSessionId && editInputRef.current) {
@@ -73,19 +113,23 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
   }, [editingSessionId]);
 
   useEffect(() => {
-    if (!editingSessionId) return;
+    if (!editingSessionId && !confirmingDeleteId) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (!(e.target as Element).closest('.ai-search__history-item')) {
+      const target = e.target as Element;
+      if (editingSessionId && !target.closest('.ai-search__history-item')) {
         const trimmed = editTitleRef.current.trim();
         setSessions((prev) =>
           prev.map((s) => (s.id === editingSessionId ? { ...s, title: trimmed || s.title } : s))
         );
         setEditingSessionId(null);
       }
+      if (confirmingDeleteId && !target.closest('.ai-search__history-row')) {
+        cancelDelete();
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [editingSessionId]);
+  }, [editingSessionId, confirmingDeleteId]);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
 
@@ -220,31 +264,48 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
           {sessions.map((session) => {
             const isActive = session.id === activeSessionId;
             const isEditing = session.id === editingSessionId;
+            const isConfirmingDelete = confirmingDeleteId === session.id;
+            const isDeleting = deletingId === session.id;
 
             return (
-              <div
+              <motion.div
                 key={session.id}
-                className={`ai-search__history-item ${isActive ? 'active' : ''} ${isEditing ? 'editing' : ''}`}
-                onClick={() => !isEditing && setActiveSessionId(session.id)}
+                layout
+                className="ai-search__history-row"
+                onClick={() => {
+                  if (isEditing) return;
+                  if (confirmingDeleteId && confirmingDeleteId !== session.id) {
+                    cancelDelete();
+                  }
+                  setActiveSessionId(session.id);
+                }}
               >
-                {isEditing ? (
-                  <input
-                    ref={editInputRef}
-                    className="ai-search__history-input"
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') saveEdit();
-                      if (e.key === 'Escape') cancelEdit();
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                ) : (
-                  <span className="ai-search__history-title">{session.title}</span>
-                )}
+                <motion.div
+                  layout
+                  className={`ai-search__history-item ${isActive ? 'active' : ''} ${isEditing ? 'editing' : ''}`}
+                  animate={
+                    isDeleting
+                      ? { x: 20, opacity: 0, transition: { duration: 0.4 } }
+                      : {}
+                  }
+                >
+                  {isEditing ? (
+                    <input
+                      ref={editInputRef}
+                      className="ai-search__history-input"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveEdit();
+                        if (e.key === 'Escape') cancelEdit();
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span className="ai-search__history-title">{session.title}</span>
+                  )}
 
-                {isActive && !isEditing && (
-                  <>
+                  {isActive && !isEditing && !isConfirmingDelete && (
                     <span
                       className="ai-search__history-edit"
                       onClick={(e) => {
@@ -254,30 +315,53 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
                     >
                       ✎
                     </span>
+                  )}
+                  {!isEditing && !isConfirmingDelete && !isDeleting && (
                     <span
                       className="ai-search__history-delete"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteSession(session.id);
-                      }}
+                      onClick={(e) => handleFirstDeleteClick(e, session.id)}
                     >
                       ×
                     </span>
-                  </>
-                )}
+                  )}
 
-                {isEditing && (
-                  <span
-                    className="ai-search__history-edit"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      saveEdit();
-                    }}
-                  >
-                    ✓
-                  </span>
-                )}
-              </div>
+                  {isEditing && (
+                    <span
+                      className="ai-search__history-edit"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        saveEdit();
+                      }}
+                    >
+                      ✓
+                    </span>
+                  )}
+                </motion.div>
+
+                <AnimatePresence>
+                  {(isConfirmingDelete || isDeleting) && (
+                    <motion.div
+                      initial={{ width: 0, opacity: 0, scale: 0.5 }}
+                      animate={
+                        isDeleting
+                          ? { width: 0, opacity: 0, x: 10, transition: { delay: 0.3, duration: 0.2 } }
+                          : { width: 28, opacity: 1, scale: 1 }
+                      }
+                      exit={{ width: 0, opacity: 0, x: 10 }}
+                      transition={{ duration: 0.25 }}
+                      className="ai-search__trash-btn"
+                      onClick={(e: React.MouseEvent) => handleTrashClick(e, session.id)}
+                    >
+                      <motion.span
+                        animate={isDeleting ? { x: [0, -3, 3, -3, 3, 0] } : {}}
+                        transition={{ duration: 0.3 }}
+                      >
+                        🗑️
+                      </motion.span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
             );
           })}
         </div>

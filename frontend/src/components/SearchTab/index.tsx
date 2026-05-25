@@ -1,7 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
-import type { City, OptimizationTarget, RoutePlan, SearchRequest } from '../../types';
-import { cityApi, searchApi } from '../../services/api';
-import SearchBar, { type AdvancedFilters } from './SearchBar';
+import type { RoutePlan } from '../../types';
 import ResultList from './ResultList';
 import './SearchTab.css';
 
@@ -14,100 +11,21 @@ const RECOMMENDATIONS = [
   { from: '武汉', to: '重庆', label: '高铁直达 · 约4小时' },
 ];
 
-export default function SearchTab() {
-  const [cities, setCities] = useState<City[]>([]);
-  const [fromCity, setFromCity] = useState('');
-  const [toCity, setToCity] = useState('');
-  const [date, setDate] = useState(() => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
-  });
-  const [optimize, setOptimize] = useState<OptimizationTarget>('balanced');
-  const [routes, setRoutes] = useState<RoutePlan[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [searched, setSearched] = useState(false);
+interface SearchTabProps {
+  routes: RoutePlan[];
+  loading: boolean;
+  error: string;
+  searched: boolean;
+  onQuickSearch: (from: string, to: string) => void;
+}
 
-  useEffect(() => {
-    cityApi.getCities().then((data) => {
-      setCities(data);
-      if (data.length > 0) setFromCity(data[0].code);
-      if (data.length > 1) setToCity(data[1].code);
-    }).catch(() => setError('加载城市列表失败'));
-  }, []);
-
-  const handleSearch = useCallback(async (advanced: AdvancedFilters) => {
-    if (!fromCity || !toCity || !date) {
-      setError('请填写完整的搜索信息');
-      return;
-    }
-    if (fromCity === toCity) {
-      setError('出发城市和目的城市不能相同');
-      return;
-    }
-    setError('');
-    setLoading(true);
-    setSearched(true);
-
-    try {
-      const request: SearchRequest = {
-        from_city: fromCity,
-        to_city: toCity,
-        travel_date: date,
-        optimization_target: optimize,
-      };
-
-      if (advanced.transfer === 'yes') {
-        request.max_transfers = 2;
-        if (advanced.transferCity) request.required_transfer_cities = [advanced.transferCity];
-      } else if (advanced.transfer === 'no') {
-        request.max_transfers = 0;
-      }
-
-      if (advanced.priceMax) {
-        request.max_price = Number(advanced.priceMax);
-      }
-
-      if (advanced.transportTypes.length > 0 && advanced.transportTypes.length < 2) {
-        request.preferred_transport_types = advanced.transportTypes;
-      }
-
-      const response = await searchApi.search(request);
-      setRoutes(response.routes);
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || '搜索失败，请稍后重试';
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
-  }, [fromCity, toCity, date, optimize]);
-
-  const quickSearch = (from: string, to: string) => {
-    const fromCode = cities.find((c) => c.name === from)?.code || from;
-    const toCode = cities.find((c) => c.name === to)?.code || to;
-    setFromCity(fromCode);
-    setToCity(toCode);
-  };
-
+export default function SearchTab({ routes, loading, error, searched, onQuickSearch }: SearchTabProps) {
   return (
     <div>
       <section className="hero">
         <div className="container">
           <h1 className="hero__title">智能路线规划，让出行更便捷</h1>
           <p className="hero__subtitle">搜索航班与火车的最优中转方案</p>
-          <SearchBar
-            cities={cities}
-            fromCity={fromCity}
-            toCity={toCity}
-            date={date}
-            optimize={optimize}
-            onFromChange={setFromCity}
-            onToChange={setToCity}
-            onDateChange={setDate}
-            onOptimizeChange={setOptimize}
-            onSearch={handleSearch}
-            loading={loading}
-          />
         </div>
       </section>
 
@@ -128,7 +46,7 @@ export default function SearchTab() {
               <h2 className="recommendations__title">热门路线推荐</h2>
               <div className="city-grid">
                 {RECOMMENDATIONS.map((rec) => (
-                  <div key={`${rec.from}-${rec.to}`} className="city-grid__item" onClick={() => quickSearch(rec.from, rec.to)}>
+                  <div key={`${rec.from}-${rec.to}`} className="city-grid__item" onClick={() => onQuickSearch(rec.from, rec.to)}>
                     <div className="city-grid__name">{rec.from} → {rec.to}</div>
                     <div className="city-grid__category">{rec.label}</div>
                   </div>

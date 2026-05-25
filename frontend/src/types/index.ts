@@ -54,6 +54,7 @@ export interface SearchRequest {
   travel_date: string;
   optimization_target: OptimizationTarget;
   max_transfers?: number;
+  min_transfers?: number;
   preferred_transport_types?: TransportType[];
   max_price?: number;
   max_total_duration_minutes?: number;

@@ -5,6 +5,9 @@ import './TopNav.css';
 interface TopNavProps {
   activeTab: 'search' | 'ai' | 'favorites';
   onTabChange: (tab: 'search' | 'ai' | 'favorites') => void;
+  isCompact?: boolean;
+  compactLabel?: string;
+  onCompactClick?: () => void;
 }
 
 const TABS = [
@@ -13,7 +16,7 @@ const TABS = [
   { key: 'ai' as const, label: 'AI搜索' },
 ];
 
-export default function TopNav({ activeTab, onTabChange }: TopNavProps) {
+export default function TopNav({ activeTab, onTabChange, isCompact = false, compactLabel = '', onCompactClick }: TopNavProps) {
   const { isDark, toggleTheme } = useTheme();
   const [langOpen, setLangOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -38,14 +41,14 @@ export default function TopNav({ activeTab, onTabChange }: TopNavProps) {
   };
 
   return (
-    <nav className="top-nav">
+    <nav className={`top-nav ${isCompact ? 'compact' : ''}`}>
       <div className="container top-nav__inner">
         <a href="#" className="top-nav__logo">
           <div className="top-nav__logo-icon">✈</div>
           <span>中转助手</span>
         </a>
 
-        <div className="top-nav__tabs">
+        <div className={`top-nav__tabs ${isCompact ? 'hidden' : ''}`}>
           {TABS.map((t) => (
             <div
               key={t.key}
@@ -55,6 +58,25 @@ export default function TopNav({ activeTab, onTabChange }: TopNavProps) {
               {t.label}
             </div>
           ))}
+        </div>
+
+        <div className={`tab-indicator ${isCompact ? 'visible' : ''}`}>
+          {TABS.map((t) => (
+            <span
+              key={t.key}
+              className={`tab-indicator__line ${activeTab === t.key ? 'active' : ''}`}
+            />
+          ))}
+        </div>
+
+        <div className={`compact-search ${isCompact ? 'visible' : ''}`} onClick={onCompactClick}>
+          <span className="compact-search__label">{compactLabel}</span>
+          <div className="compact-search__orb">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+          </div>
         </div>
 
         <div className="top-nav__tools">
@@ -79,7 +101,7 @@ export default function TopNav({ activeTab, onTabChange }: TopNavProps) {
                 <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
               </svg>
             </button>
-            <div className={`dropdown-menu ${langOpen ? 'opening' : ''} ${!langOpen ? 'hidden' : ''}`}>
+            <div className={`dropdown-menu ${langOpen ? 'opening' : 'hidden'}`}>
               <div className="dropdown-surface" />
               <div className="dropdown-content">
                 <div className="dropdown-item active">中文</div>
@@ -104,7 +126,7 @@ export default function TopNav({ activeTab, onTabChange }: TopNavProps) {
                 👤
               </div>
             </button>
-            <div className={`dropdown-menu ${accountOpen ? 'opening' : ''} ${!accountOpen ? 'hidden' : ''}`}>
+            <div className={`dropdown-menu ${accountOpen ? 'opening' : 'hidden'}`}>
               <div className="dropdown-surface" />
               <div className="dropdown-content">
                 <div className="dropdown-item">设置</div>

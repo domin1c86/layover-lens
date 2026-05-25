@@ -9,7 +9,6 @@ export default function Footer() {
             <div className="footer__col-title">支持</div>
             <a href="#" className="footer__link">帮助中心</a>
             <a href="#" className="footer__link">安全信息</a>
-            <a href="#" className="footer__link">取消选项</a>
             <a href="#" className="footer__link">联系我们</a>
           </div>
           <div>
@@ -17,7 +16,6 @@ export default function Footer() {
             <a href="#" className="footer__link">关于中转助手</a>
             <a href="#" className="footer__link">新闻动态</a>
             <a href="#" className="footer__link">加入我们</a>
-            <a href="#" className="footer__link">合作伙伴</a>
           </div>
           <div>
             <div className="footer__col-title">法律</div>
