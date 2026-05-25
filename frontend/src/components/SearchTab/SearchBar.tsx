@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import type { City, OptimizationTarget, TransportType } from '../../types';
 import './SearchBar.css';
 
@@ -73,11 +74,12 @@ function getCityGroup(nameEn: string): string {
   return 'uvwxyz';
 }
 
-function CityPicker({ cities, value, onChange, onClose }: {
+function CityPicker({ cities, value, onChange, onClose, isOpen }: {
   cities: City[];
   value: string;
   onChange: (val: string) => void;
   onClose: () => void;
+  isOpen: boolean;
 }) {
   const [activeGroup, setActiveGroup] = useState('hot');
 
@@ -92,38 +94,50 @@ function CityPicker({ cities, value, onChange, onClose }: {
   }, [cities, activeGroup]);
 
   return (
-    <div className="picker-panel city-picker" onClick={(e) => e.stopPropagation()}>
-      <div className="city-picker__tabs">
-        {CITY_GROUPS.map((g) => (
-          <div
-            key={g.key}
-            className={`city-picker__tab ${activeGroup === g.key ? 'active' : ''}`}
-            onClick={() => setActiveGroup(g.key)}
-          >
-            {g.label}
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="picker-panel city-picker"
+          initial={{ opacity: 0, y: -24, scale: 0.9, x: '-50%' }}
+          animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
+          exit={{ opacity: 0, y: -12, scale: 0.95, x: '-50%' }}
+          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+        >
+          <div className="city-picker__tabs">
+            {CITY_GROUPS.map((g) => (
+              <div
+                key={g.key}
+                className={`city-picker__tab ${activeGroup === g.key ? 'active' : ''}`}
+                onClick={() => setActiveGroup(g.key)}
+              >
+                {g.label}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div className="city-picker__grid">
-        {filtered.map((c) => (
-          <div
-            key={c.code}
-            className={`picker-item ${c.code === value ? 'selected' : ''}`}
-            onClick={() => { onChange(c.code); onClose(); }}
-          >
-            {c.name}
+          <div className="city-picker__grid">
+            {filtered.map((c) => (
+              <div
+                key={c.code}
+                className={`picker-item ${c.code === value ? 'selected' : ''}`}
+                onClick={() => { onChange(c.code); onClose(); }}
+              >
+                {c.name}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-    </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
-function MultiCityPicker({ cities, selected, onChange, onClose }: {
+function MultiCityPicker({ cities, selected, onChange, onClose, isOpen }: {
   cities: City[];
   selected: string[];
   onChange: (val: string[]) => void;
   onClose: () => void;
+  isOpen: boolean;
 }) {
   const [activeGroup, setActiveGroup] = useState('hot');
 
@@ -145,81 +159,117 @@ function MultiCityPicker({ cities, selected, onChange, onClose }: {
   };
 
   return (
-    <div className="picker-panel city-picker" onClick={(e) => e.stopPropagation()}>
-      <div className="city-picker__tabs">
-        {CITY_GROUPS.map((g) => (
-          <div
-            key={g.key}
-            className={`city-picker__tab ${activeGroup === g.key ? 'active' : ''}`}
-            onClick={() => setActiveGroup(g.key)}
-          >
-            {g.label}
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="picker-panel city-picker"
+          initial={{ opacity: 0, y: -24, scale: 0.9, x: '-50%' }}
+          animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
+          exit={{ opacity: 0, y: -12, scale: 0.95, x: '-50%' }}
+          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+        >
+          <div className="city-picker__tabs">
+            {CITY_GROUPS.map((g) => (
+              <div
+                key={g.key}
+                className={`city-picker__tab ${activeGroup === g.key ? 'active' : ''}`}
+                onClick={() => setActiveGroup(g.key)}
+              >
+                {g.label}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div className="city-picker__grid">
-        {filtered.map((c) => (
-          <div
-            key={c.code}
-            className={`picker-item ${selected.includes(c.code) ? 'selected' : ''}`}
-            onClick={() => toggleCity(c.code)}
-          >
-            {c.name}
+          <div className="city-picker__grid">
+            {filtered.map((c) => (
+              <div
+                key={c.code}
+                className={`picker-item ${selected.includes(c.code) ? 'selected' : ''}`}
+                onClick={() => toggleCity(c.code)}
+              >
+                {c.name}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div className="city-picker__footer">
-        <button className="city-picker__confirm" onClick={onClose}>确定</button>
-      </div>
-    </div>
+          <div className="city-picker__footer">
+            <button className="city-picker__confirm" onClick={onClose}>确定</button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
-function OptPicker({ value, onChange, onClose }: {
+function OptPicker({ value, onChange, onClose, isOpen }: {
   value: OptimizationTarget;
   onChange: (val: OptimizationTarget) => void;
   onClose: () => void;
+  isOpen: boolean;
 }) {
   return (
-    <div className="picker-panel opt-picker" onClick={(e) => e.stopPropagation()}>
-      {(['balanced', 'price', 'time', 'transfer'] as OptimizationTarget[]).map((o) => (
-        <div
-          key={o}
-          className={`picker-item ${o === value ? 'selected' : ''}`}
-          onClick={() => { onChange(o); onClose(); }}
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="picker-panel opt-picker"
+          initial={{ opacity: 0, y: -24, scale: 0.9, x: '-50%' }}
+          animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
+          exit={{ opacity: 0, y: -12, scale: 0.95, x: '-50%' }}
+          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
         >
-          {OPTIMIZE_LABELS[o]}
-        </div>
-      ))}
-    </div>
+          {(['balanced', 'price', 'time', 'transfer'] as OptimizationTarget[]).map((o) => (
+            <div
+              key={o}
+              className={`picker-item ${o === value ? 'selected' : ''}`}
+              onClick={() => { onChange(o); onClose(); }}
+            >
+              {OPTIMIZE_LABELS[o]}
+            </div>
+          ))}
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
-function SelectPicker<T extends string>({ options, value, onChange, onClose }: {
+function SelectPicker<T extends string>({ options, value, onChange, onClose, isOpen }: {
   options: { value: T; label: string }[];
   value: T;
   onChange: (val: T) => void;
   onClose: () => void;
+  isOpen: boolean;
 }) {
   return (
-    <div className="picker-panel opt-picker" onClick={(e) => e.stopPropagation()}>
-      {options.map((o) => (
-        <div
-          key={o.value}
-          className={`picker-item ${o.value === value ? 'selected' : ''}`}
-          onClick={() => { onChange(o.value); onClose(); }}
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="picker-panel opt-picker"
+          initial={{ opacity: 0, y: -24, scale: 0.9, x: '-50%' }}
+          animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
+          exit={{ opacity: 0, y: -12, scale: 0.95, x: '-50%' }}
+          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
         >
-          {o.label}
-        </div>
-      ))}
-    </div>
+          {options.map((o) => (
+            <div
+              key={o.value}
+              className={`picker-item ${o.value === value ? 'selected' : ''}`}
+              onClick={() => { onChange(o.value); onClose(); }}
+            >
+              {o.label}
+            </div>
+          ))}
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
-function CalendarPicker({ value, onChange, onClose }: {
+function CalendarPicker({ value, onChange, onClose, isOpen }: {
   value: string;
   onChange: (val: string) => void;
   onClose: () => void;
+  isOpen: boolean;
 }) {
   const [viewDate, setViewDate] = useState(() => {
     const d = value ? new Date(value + 'T00:00:00') : new Date();
@@ -279,48 +329,59 @@ function CalendarPicker({ value, onChange, onClose }: {
   ];
 
   return (
-    <div className="picker-panel calendar-picker" onClick={(e) => e.stopPropagation()}>
-      <div className="calendar-picker__layout">
-        <div className="calendar-quick-select">
-          {quickOptions.map((q) => (
-            <div
-              key={q.label}
-              className="calendar-quick-card"
-              onClick={() => { onChange(q.date); onClose(); }}
-            >
-              <div className="calendar-quick-card__title">{q.label}</div>
-              <div className="calendar-quick-card__sub">{q.sub}</div>
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="picker-panel calendar-picker"
+          initial={{ opacity: 0, y: -24, scale: 0.9, x: '-50%' }}
+          animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
+          exit={{ opacity: 0, y: -12, scale: 0.95, x: '-50%' }}
+          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+        >
+          <div className="calendar-picker__layout">
+            <div className="calendar-quick-select">
+              {quickOptions.map((q) => (
+                <div
+                  key={q.label}
+                  className="calendar-quick-card"
+                  onClick={() => { onChange(q.date); onClose(); }}
+                >
+                  <div className="calendar-quick-card__title">{q.label}</div>
+                  <div className="calendar-quick-card__sub">{q.sub}</div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-        <div className="calendar-main">
-          <div className="calendar-header">
-            <button type="button" onClick={prevMonth} aria-label="上个月">‹</button>
-            <span>{year}年{month + 1}月</span>
-            <button type="button" onClick={nextMonth} aria-label="下个月">›</button>
-          </div>
-          <div className="calendar-weekdays">
-            {weekDays.map((d) => <span key={d}>{d}</span>)}
-          </div>
-          <div className="calendar-days">
-            {days.map((day, i) => (
-              <div
-                key={i}
-                className={`calendar-day ${day === null ? 'empty' : ''} ${day !== null && isSelected(day) ? 'selected' : ''} ${day !== null && isToday(day) ? 'today' : ''}`}
-                onClick={() => day !== null && handleDayClick(day)}
-              >
-                {day}
+            <div className="calendar-main">
+              <div className="calendar-header">
+                <button type="button" onClick={prevMonth} aria-label="上个月">‹</button>
+                <span>{year}年{month + 1}月</span>
+                <button type="button" onClick={nextMonth} aria-label="下个月">›</button>
               </div>
-            ))}
-          </div>
-          {value && (
-            <div className="calendar-footer">
-              已选：{formatDateLabel(value)}
+              <div className="calendar-weekdays">
+                {weekDays.map((d) => <span key={d}>{d}</span>)}
+              </div>
+              <div className="calendar-days">
+                {days.map((day, i) => (
+                  <div
+                    key={i}
+                    className={`calendar-day ${day === null ? 'empty' : ''} ${day !== null && isSelected(day) ? 'selected' : ''} ${day !== null && isToday(day) ? 'today' : ''}`}
+                    onClick={() => day !== null && handleDayClick(day)}
+                  >
+                    {day}
+                  </div>
+                ))}
+              </div>
+              {value && (
+                <div className="calendar-footer">
+                  已选：{formatDateLabel(value)}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </div>
-    </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -479,48 +540,44 @@ export default function SearchBar({
         <div className={`search-bar__segment ${fromOpen ? 'open' : ''}`} ref={fromRef} onClick={() => togglePicker('from')}>
           <span className="search-bar__label">出发地</span>
           <span className="search-bar__value active">{fromName}</span>
-          {fromOpen && (
-            <CityPicker
-              cities={cities}
-              value={fromCity}
-              onChange={onFromChange}
-              onClose={() => setFromOpen(false)}
-            />
-          )}
+          <CityPicker
+            cities={cities}
+            value={fromCity}
+            onChange={onFromChange}
+            onClose={() => setFromOpen(false)}
+            isOpen={fromOpen}
+          />
         </div>
         <div className={`search-bar__segment ${toOpen ? 'open' : ''}`} ref={toRef} onClick={() => togglePicker('to')}>
           <span className="search-bar__label">目的地</span>
           <span className="search-bar__value active">{toName}</span>
-          {toOpen && (
-            <CityPicker
-              cities={cities}
-              value={toCity}
-              onChange={onToChange}
-              onClose={() => setToOpen(false)}
-            />
-          )}
+          <CityPicker
+            cities={cities}
+            value={toCity}
+            onChange={onToChange}
+            onClose={() => setToOpen(false)}
+            isOpen={toOpen}
+          />
         </div>
         <div className={`search-bar__segment ${dateOpen ? 'open' : ''}`} ref={dateRef} onClick={() => togglePicker('date')}>
           <span className="search-bar__label">日期</span>
           <span className="search-bar__value active">{formatDateLabel(date)}</span>
-          {dateOpen && (
-            <CalendarPicker
-              value={date}
-              onChange={onDateChange}
-              onClose={() => setDateOpen(false)}
-            />
-          )}
+          <CalendarPicker
+            value={date}
+            onChange={onDateChange}
+            onClose={() => setDateOpen(false)}
+            isOpen={dateOpen}
+          />
         </div>
         <div className={`search-bar__segment ${optOpen ? 'open' : ''}`} ref={optRef} onClick={() => togglePicker('opt')}>
           <span className="search-bar__label">优化目标</span>
           <span className="search-bar__value">{OPTIMIZE_LABELS[optimize]}</span>
-          {optOpen && (
-            <OptPicker
-              value={optimize}
-              onChange={onOptimizeChange}
-              onClose={() => setOptOpen(false)}
-            />
-          )}
+          <OptPicker
+            value={optimize}
+            onChange={onOptimizeChange}
+            onClose={() => setOptOpen(false)}
+            isOpen={optOpen}
+          />
         </div>
         <button className="search-bar__orb" onClick={handleSearch} disabled={loading} title="搜索">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -530,7 +587,16 @@ export default function SearchBar({
         </button>
       </div>
 
-      <div className={`advanced-search ${drawerOpen ? '' : 'hidden'} ${(transferOpen || transferPickerOpen || transferTimePickerOpen) ? 'overflow-visible' : ''}`} ref={advancedRef}>
+      <AnimatePresence>
+        {drawerOpen && (
+          <motion.div
+            className={`advanced-search ${(transferOpen || transferPickerOpen || transferTimePickerOpen) ? 'overflow-visible' : ''}`}
+            ref={advancedRef}
+            initial={{ height: 0, opacity: 0, paddingTop: 0, paddingBottom: 0, marginTop: 0 }}
+            animate={{ height: 'auto', opacity: 1, paddingTop: 48, paddingBottom: 32, marginTop: -32 }}
+            exit={{ height: 0, opacity: 0, paddingTop: 0, paddingBottom: 0, marginTop: 0 }}
+            transition={{ duration: 0.35, ease: 'easeInOut' }}
+          >
         <div className="advanced-search__row">
           <div className="advanced-search__field">
             <label>是否中转</label>
@@ -540,14 +606,13 @@ export default function SearchBar({
               onClick={() => setTransferPickerOpen(!transferPickerOpen)}
             >
               <span className="active">{TRANSFER_OPTIONS.find((o) => o.value === advanced.transfer)?.label}</span>
-              {transferPickerOpen && (
-                <SelectPicker
-                  options={TRANSFER_OPTIONS}
-                  value={advanced.transfer}
-                  onChange={(val) => updateAdvanced('transfer', val)}
-                  onClose={() => setTransferPickerOpen(false)}
-                />
-              )}
+              <SelectPicker
+                options={TRANSFER_OPTIONS}
+                value={advanced.transfer}
+                onChange={(val) => updateAdvanced('transfer', val)}
+                onClose={() => setTransferPickerOpen(false)}
+                isOpen={transferPickerOpen}
+              />
             </div>
           </div>
           <div className={`advanced-search__field ${advanced.transfer === 'no' ? 'hidden' : ''}`}>
@@ -560,14 +625,13 @@ export default function SearchBar({
               <span className={advanced.transferCities.length > 0 ? 'active' : ''}>
                 {formatTransferCitiesLabel(advanced.transferCities)}
               </span>
-              {transferOpen && (
-                <MultiCityPicker
-                  cities={cities}
-                  selected={advanced.transferCities}
-                  onChange={(val) => updateAdvanced('transferCities', val)}
-                  onClose={() => setTransferOpen(false)}
-                />
-              )}
+              <MultiCityPicker
+                cities={cities}
+                selected={advanced.transferCities}
+                onChange={(val) => updateAdvanced('transferCities', val)}
+                onClose={() => setTransferOpen(false)}
+                isOpen={transferOpen}
+              />
             </div>
           </div>
           <div className={`advanced-search__field ${advanced.transfer === 'no' ? 'hidden' : ''}`}>
@@ -578,14 +642,13 @@ export default function SearchBar({
               onClick={() => setTransferTimePickerOpen(!transferTimePickerOpen)}
             >
               <span className="active">{TRANSFER_TIME_OPTIONS.find((o) => o.value === advanced.transferTime)?.label}</span>
-              {transferTimePickerOpen && (
-                <SelectPicker
-                  options={TRANSFER_TIME_OPTIONS}
-                  value={advanced.transferTime}
-                  onChange={(val) => updateAdvanced('transferTime', val)}
-                  onClose={() => setTransferTimePickerOpen(false)}
-                />
-              )}
+              <SelectPicker
+                options={TRANSFER_TIME_OPTIONS}
+                value={advanced.transferTime}
+                onChange={(val) => updateAdvanced('transferTime', val)}
+                onClose={() => setTransferTimePickerOpen(false)}
+                isOpen={transferTimePickerOpen}
+              />
             </div>
           </div>
           <div className={`advanced-search__field ${advanced.transfer === 'no' ? 'hidden' : ''}`}>
@@ -640,13 +703,20 @@ export default function SearchBar({
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
+        )}
+    </AnimatePresence>
 
       <div className="advanced-search-toggle" ref={toggleRef} onClick={() => setDrawerOpen(!drawerOpen)}>
         <span>高级搜索</span>
-        <svg className={`advanced-search__arrow ${drawerOpen ? 'open' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <motion.svg
+          className="advanced-search__arrow"
+          animate={{ rotate: drawerOpen ? 180 : 0 }}
+          transition={{ duration: 0.3 }}
+          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        >
           <polyline points="6 9 12 15 18 9" />
-        </svg>
+        </motion.svg>
       </div>
     </div>
   );
