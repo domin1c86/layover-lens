@@ -595,7 +595,7 @@ export default function SearchBar({
             initial={{ height: 0, opacity: 0, paddingTop: 0, paddingBottom: 0, marginTop: 0 }}
             animate={{ height: 'auto', opacity: 1, paddingTop: 48, paddingBottom: 32, marginTop: -32 }}
             exit={{ height: 0, opacity: 0, paddingTop: 0, paddingBottom: 0, marginTop: 0 }}
-            transition={{ duration: 0.35, ease: 'easeInOut' }}
+            transition={{ duration: 0.35, ease: [0, 0, 1, 1] }}
           >
         <div className="advanced-search__row">
           <div className="advanced-search__field">

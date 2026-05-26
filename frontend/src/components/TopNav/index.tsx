@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { motion } from 'motion/react';
 import { useTheme } from '../../context/ThemeContext';
 import './TopNav.css';
 
@@ -20,6 +21,7 @@ export default function TopNav({ activeTab, onTabChange, isCompact = false, comp
   const { isDark, toggleTheme } = useTheme();
   const [langOpen, setLangOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [hoveredIndicator, setHoveredIndicator] = useState<string | null>(null);
   const langRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
 
@@ -41,7 +43,7 @@ export default function TopNav({ activeTab, onTabChange, isCompact = false, comp
   };
 
   return (
-    <nav className={`top-nav ${isCompact ? 'compact' : ''}`}>
+    <nav className={`top-nav ${isCompact ? 'compact' : ''} ${isDark ? 'dark' : ''}`}>
       <div className="container top-nav__inner">
         <a href="#" className="top-nav__logo">
           <div className="top-nav__logo-icon">✈</div>
@@ -62,21 +64,31 @@ export default function TopNav({ activeTab, onTabChange, isCompact = false, comp
 
         <div className={`tab-indicator ${isCompact ? 'visible' : ''}`}>
           {TABS.map((t) => (
-            <span
+            <motion.div
               key={t.key}
-              className={`tab-indicator__line ${activeTab === t.key ? 'active' : ''}`}
-            />
+              className="tab-indicator__item"
+              onClick={() => {
+                if (activeTab !== t.key) {
+                  onTabChange(t.key);
+                }
+              }}
+              onHoverStart={() => setHoveredIndicator(t.key)}
+              onHoverEnd={() => setHoveredIndicator(null)}
+            >
+              <div className="tab-indicator__hitbox" />
+              <motion.div
+                className={`tab-indicator__line-visual ${activeTab === t.key ? 'active' : ''}`}
+                animate={{
+                  y: hoveredIndicator === t.key && activeTab !== t.key ? -4 : 0,
+                }}
+                transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+              />
+            </motion.div>
           ))}
         </div>
 
         <div className={`compact-search ${isCompact ? 'visible' : ''}`} onClick={onCompactClick}>
           <span className="compact-search__label">{compactLabel}</span>
-          <div className="compact-search__orb">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.35-4.35" />
-            </svg>
-          </div>
         </div>
 
         <div className="top-nav__tools">

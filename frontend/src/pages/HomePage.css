@@ -27,6 +27,10 @@
   box-shadow: var(--shadow-card);
 }
 
+.home-page__search-bar.dark {
+  background: #242424;
+}
+
 /* --- Content disappears first --- */
 .home-page__search-bar.compact .search-bar__segment,
 .home-page__search-bar.compact .search-bar__orb,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { City, OptimizationTarget, RoutePlan, SearchRequest } from '../types';
 import { cityApi, searchApi } from '../services/api';
+import { useTheme } from '../context/ThemeContext';
 import TopNav from '../components/TopNav';
 import SearchTab from '../components/SearchTab';
 import AiSearchTab from '../components/AiSearchTab';
@@ -9,10 +10,11 @@ import SearchBar, { type AdvancedFilters } from '../components/SearchTab/SearchB
 import Footer from '../components/Footer';
 import './HomePage.css';
 
-const COMPACT_DOWN_THRESHOLD = 60; // 向下滚动超过此值 → 缩短
-const COMPACT_UP_THRESHOLD = 30;    // 向上滚动低于此值 → 展开
+const THREE_LINES = 24; // 一行高度，作为展开/缩小的阈值
+const COMPACT_TRANSITION_MS = 550;
 
 export default function HomePage() {
+  const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'search' | 'ai' | 'favorites'>('search');
   const [isCompact, setIsCompact] = useState(false);
   const [aiFooterOpen, setAiFooterOpen] = useState(false);
@@ -34,6 +36,28 @@ export default function HomePage() {
   const isTransitioning = useRef(false);
   const lastScrollY = useRef(window.scrollY);
   const activeTabRef = useRef(activeTab);
+  const prevActiveTabRef = useRef(activeTab);
+  const expandedAtRef = useRef(window.scrollY);
+  const transitionTimeoutRef = useRef<number | undefined>();
+
+  const startCompactTransition = useCallback((nextIsCompact: boolean) => {
+    isTransitioning.current = true;
+    if (transitionTimeoutRef.current !== undefined) {
+      window.clearTimeout(transitionTimeoutRef.current);
+    }
+
+    transitionTimeoutRef.current = window.setTimeout(() => {
+      isTransitioning.current = false;
+      const currentY = window.scrollY;
+      lastScrollY.current = currentY;
+
+      if (!nextIsCompact) {
+        expandedAtRef.current = currentY;
+      }
+
+      transitionTimeoutRef.current = undefined;
+    }, COMPACT_TRANSITION_MS);
+  }, []);
 
   useEffect(() => {
     activeTabRef.current = activeTab;
@@ -44,18 +68,13 @@ export default function HomePage() {
       if (isTransitioning.current) return;
 
       const y = window.scrollY;
-      const delta = y - lastScrollY.current;
       lastScrollY.current = y;
 
       setIsCompact((prev) => {
         // AI 搜索标签页强制保持 compact
         if (activeTabRef.current === 'ai') {
           if (!prev) {
-            isTransitioning.current = true;
-            setTimeout(() => {
-              isTransitioning.current = false;
-              lastScrollY.current = window.scrollY;
-            }, 350);
+            startCompactTransition(true);
           }
           return true;
         }
@@ -64,40 +83,43 @@ export default function HomePage() {
         const effectiveY = Math.max(0, y - topBarHeight);
 
         let next = prev;
-        // 只有向下滚动才能触发 compact
-        if (!prev && delta > 0 && effectiveY > COMPACT_DOWN_THRESHOLD) {
+        // 缩小：展开状态下，从展开点累计向下滚动 >= THREE_LINES 即触发，不限定当前位置
+        if (!prev && y - expandedAtRef.current >= THREE_LINES) {
           next = true;
         }
-        // 只有向上滚动才能触发 expand
-        else if (prev && delta < 0 && effectiveY < COMPACT_UP_THRESHOLD) {
+        // 展开：缩小状态下，距离顶部小于 THREE_LINES 时触发
+        else if (prev && effectiveY < THREE_LINES) {
           next = false;
         }
 
         if (next !== prev) {
-          isTransitioning.current = true;
-          setTimeout(() => {
-            isTransitioning.current = false;
-            lastScrollY.current = window.scrollY;
-          }, 350);
+          startCompactTransition(next);
         }
         return next;
       });
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     handleScroll();
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (transitionTimeoutRef.current !== undefined) {
+        window.clearTimeout(transitionTimeoutRef.current);
+      }
+    };
+  }, [startCompactTransition]);
 
   useEffect(() => {
-    if (activeTab === 'ai' && !isCompact) {
+    if (prevActiveTabRef.current === activeTab) return;
+    prevActiveTabRef.current = activeTab;
+
+    if (activeTab === 'ai') {
       setIsCompact(true);
-      isTransitioning.current = true;
-      setTimeout(() => {
-        isTransitioning.current = false;
-        lastScrollY.current = window.scrollY;
-      }, 350);
+      startCompactTransition(true);
+    } else {
+      setIsCompact(false);
+      startCompactTransition(false);
     }
-  }, [activeTab, isCompact]);
+  }, [activeTab, startCompactTransition]);
 
   useEffect(() => {
     if (activeTab !== 'ai') {
@@ -193,12 +215,8 @@ export default function HomePage() {
   const handleCompactClick = useCallback(() => {
     if (activeTab === 'ai') return;
     setIsCompact(false);
-    isTransitioning.current = true;
-    setTimeout(() => {
-      isTransitioning.current = false;
-      lastScrollY.current = window.scrollY;
-    }, 350);
-  }, [activeTab]);
+    startCompactTransition(false);
+  }, [activeTab, startCompactTransition]);
 
   const fromCityName = cities.find((c) => c.code === fromCity)?.name || fromCity;
   const toCityName = cities.find((c) => c.code === toCity)?.name || toCity;
@@ -220,7 +238,7 @@ export default function HomePage() {
           onCompactClick={handleCompactClick}
         />
 
-        <div className={`home-page__search-bar ${isCompact ? 'compact' : ''}`}>
+        <div className={`home-page__search-bar ${isCompact ? 'compact' : ''} ${isDark ? 'dark' : ''}`}>
           <div className="container">
             <SearchBar
               cities={cities}
