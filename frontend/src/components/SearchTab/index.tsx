@@ -1,5 +1,6 @@
 import type { RoutePlan } from '../../types';
 import ResultList from './ResultList';
+import { useLocale } from '../../context/LocaleContext';
 import './SearchTab.css';
 
 const RECOMMENDATIONS = [
@@ -20,12 +21,13 @@ interface SearchTabProps {
 }
 
 export default function SearchTab({ routes, loading, error, searched, onQuickSearch }: SearchTabProps) {
+  const { t } = useLocale();
   return (
     <div>
       <section className="hero">
         <div className="container">
-          <h1 className="hero__title">智能路线规划，让出行更便捷</h1>
-          <p className="hero__subtitle">搜索航班与火车的最优中转方案</p>
+          <h1 className="hero__title">{t('searchTab.heroTitle')}</h1>
+          <p className="hero__subtitle">{t('searchTab.heroSubtitle')}</p>
         </div>
       </section>
 
@@ -34,8 +36,8 @@ export default function SearchTab({ routes, loading, error, searched, onQuickSea
           {!searched && !loading && (
             <div className="empty-state">
               <div className="empty-state__icon">🗺️</div>
-              <div className="empty-state__title">输入出发地和目的地，开始搜索最优路线</div>
-              <div className="empty-state__subtitle">支持航班、火车及多模式中转组合</div>
+              <div className="empty-state__title">{t('searchTab.emptyTitle')}</div>
+              <div className="empty-state__subtitle">{t('searchTab.emptySubtitle')}</div>
             </div>
           )}
 
@@ -43,7 +45,7 @@ export default function SearchTab({ routes, loading, error, searched, onQuickSea
 
           {!searched && !loading && (
             <div className="recommendations">
-              <h2 className="recommendations__title">热门路线推荐</h2>
+              <h2 className="recommendations__title">{t('searchTab.recommendations')}</h2>
               <div className="city-grid">
                 {RECOMMENDATIONS.map((rec) => (
                   <div key={`${rec.from}-${rec.to}`} className="city-grid__item" onClick={() => onQuickSearch(rec.from, rec.to)}>

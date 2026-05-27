@@ -56,7 +56,7 @@ def append_ai_search_message(
     search_service: SearchService = Depends(get_search_service),
 ) -> AISearchResponse:
     try:
-        return search_service.append_ai_message(session_id, request.message)
+        return search_service.append_ai_message(session_id, request.message, language=request.language)
     except AIClientError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:

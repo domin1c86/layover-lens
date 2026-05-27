@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS stations (
     id INT AUTO_INCREMENT PRIMARY KEY,
     code VARCHAR(20) UNIQUE NOT NULL COMMENT '站点代码',
     name VARCHAR(100) NOT NULL COMMENT '站点名称',
+    name_en VARCHAR(100) COMMENT '英文名称',
     city_code VARCHAR(10) NOT NULL COMMENT '所属城市',
     type ENUM('airport', 'train_station', 'bus_station') NOT NULL COMMENT '站点类型',
     latitude DECIMAL(10, 8) COMMENT '纬度',
@@ -94,146 +95,146 @@ INSERT INTO cities (code, name, name_en, latitude, longitude) VALUES
 -- ============================================
 -- 插入站点数据（机场+火车站）
 -- ============================================
-INSERT INTO stations (code, name, city_code, type) VALUES
+INSERT INTO stations (code, name, name_en, city_code, type) VALUES
 -- 北京
-('PEK', '首都国际机场T1/T2', 'BJ', 'airport'),
-('PKX', '大兴国际机场', 'BJ', 'airport'),
-('BJS', '北京南站', 'BJ', 'train_station'),
-('BJX', '北京西站', 'BJ', 'train_station'),
-('BJN', '北京北站', 'BJ', 'train_station'),
+('PEK', '首都国际机场T1/T2', 'Capital International Airport T1/T2', 'BJ', 'airport'),
+('PKX', '大兴国际机场', 'Daxing International Airport', 'BJ', 'airport'),
+('BJS', '北京南站', 'Beijing South Railway Station', 'BJ', 'train_station'),
+('BJX', '北京西站', 'Beijing West Railway Station', 'BJ', 'train_station'),
+('BJN', '北京北站', 'Beijing North Railway Station', 'BJ', 'train_station'),
 -- 上海
-('PVG', '浦东国际机场', 'SH', 'airport'),
-('SHA', '虹桥国际机场', 'SH', 'airport'),
-('SHH', '上海虹桥站', 'SH', 'train_station'),
-('SHS', '上海站', 'SH', 'train_station'),
+('PVG', '浦东国际机场', 'Pudong International Airport', 'SH', 'airport'),
+('SHA', '虹桥国际机场', 'Hongqiao International Airport', 'SH', 'airport'),
+('SHH', '上海虹桥站', 'Shanghai Hongqiao Railway Station', 'SH', 'train_station'),
+('SHS', '上海站', 'Shanghai Railway Station', 'SH', 'train_station'),
 -- 广州
-('CAN', '白云国际机场', 'GZ', 'airport'),
-('GZS', '广州南站', 'GZ', 'train_station'),
-('GZE', '广州东站', 'GZ', 'train_station'),
+('CAN', '白云国际机场', 'Baiyun International Airport', 'GZ', 'airport'),
+('GZS', '广州南站', 'Guangzhou South Railway Station', 'GZ', 'train_station'),
+('GZE', '广州东站', 'Guangzhou East Railway Station', 'GZ', 'train_station'),
 -- 深圳
-('SZX', '宝安国际机场', 'SZ', 'airport'),
-('SZS', '深圳北站', 'SZ', 'train_station'),
-('SZA', '深圳站', 'SZ', 'train_station'),
+('SZX', '宝安国际机场', "Bao'an International Airport", 'SZ', 'airport'),
+('SZS', '深圳北站', 'Shenzhen North Railway Station', 'SZ', 'train_station'),
+('SZA', '深圳站', 'Shenzhen Railway Station', 'SZ', 'train_station'),
 -- 杭州
-('HGH', '萧山国际机场', 'HZ', 'airport'),
-('HZS', '杭州东站', 'HZ', 'train_station'),
-('HZH', '杭州站', 'HZ', 'train_station'),
+('HGH', '萧山国际机场', 'Xiaoshan International Airport', 'HZ', 'airport'),
+('HZS', '杭州东站', 'Hangzhou East Railway Station', 'HZ', 'train_station'),
+('HZH', '杭州站', 'Hangzhou Railway Station', 'HZ', 'train_station'),
 -- 南京
-('NKG', '禄口国际机场', 'NJ', 'airport'),
-('NJS', '南京南站', 'NJ', 'train_station'),
-('NJH', '南京站', 'NJ', 'train_station'),
+('NKG', '禄口国际机场', 'Lukou International Airport', 'NJ', 'airport'),
+('NJS', '南京南站', 'Nanjing South Railway Station', 'NJ', 'train_station'),
+('NJH', '南京站', 'Nanjing Railway Station', 'NJ', 'train_station'),
 -- 成都
-('CTU', '天府国际机场', 'CD', 'airport'),
-('TFU', '双流国际机场', 'CD', 'airport'),
-('CDS', '成都东站', 'CD', 'train_station'),
+('CTU', '天府国际机场', 'Tianfu International Airport', 'CD', 'airport'),
+('TFU', '双流国际机场', 'Shuangliu International Airport', 'CD', 'airport'),
+('CDS', '成都东站', 'Chengdu East Railway Station', 'CD', 'train_station'),
 -- 重庆
-('CKG', '江北国际机场', 'CQ', 'airport'),
-('CQS', '重庆北站', 'CQ', 'train_station'),
-('CQW', '重庆西站', 'CQ', 'train_station'),
+('CKG', '江北国际机场', 'Jiangbei International Airport', 'CQ', 'airport'),
+('CQS', '重庆北站', 'Chongqing North Railway Station', 'CQ', 'train_station'),
+('CQW', '重庆西站', 'Chongqing West Railway Station', 'CQ', 'train_station'),
 -- 武汉
-('WUH', '天河国际机场', 'WH', 'airport'),
-('WHS', '武汉站', 'WH', 'train_station'),
-('WHH', '汉口站', 'WH', 'train_station'),
+('WUH', '天河国际机场', 'Tianhe International Airport', 'WH', 'airport'),
+('WHS', '武汉站', 'Wuhan Railway Station', 'WH', 'train_station'),
+('WHH', '汉口站', 'Hankou Railway Station', 'WH', 'train_station'),
 -- 西安
-('XIY', '咸阳国际机场', 'XA', 'airport'),
-('XAS', '西安北站', 'XA', 'train_station'),
-('XAH', '西安站', 'XA', 'train_station'),
+('XIY', '咸阳国际机场', 'Xianyang International Airport', 'XA', 'airport'),
+('XAS', '西安北站', "Xi'an North Railway Station", 'XA', 'train_station'),
+('XAH', '西安站', "Xi'an Railway Station", 'XA', 'train_station'),
 -- 苏州
-('SZV', '苏南硕放机场', 'SU', 'airport'),
-('SUS', '苏州站', 'SU', 'train_station'),
-('SUN', '苏州北站', 'SU', 'train_station'),
+('SZV', '苏南硕放机场', 'Sunan Shuofang Airport', 'SU', 'airport'),
+('SUS', '苏州站', 'Suzhou Railway Station', 'SU', 'train_station'),
+('SUN', '苏州北站', 'Suzhou North Railway Station', 'SU', 'train_station'),
 -- 天津
-('TSN', '滨海国际机场', 'TJ', 'airport'),
-('TJS', '天津西站', 'TJ', 'train_station'),
-('TJT', '天津站', 'TJ', 'train_station'),
+('TSN', '滨海国际机场', 'Binhai International Airport', 'TJ', 'airport'),
+('TJS', '天津西站', 'Tianjin West Railway Station', 'TJ', 'train_station'),
+('TJT', '天津站', 'Tianjin Railway Station', 'TJ', 'train_station'),
 -- 郑州
-('CGO', '新郑国际机场', 'ZZ', 'airport'),
-('ZZS', '郑州东站', 'ZZ', 'train_station'),
+('CGO', '新郑国际机场', 'Xinzheng International Airport', 'ZZ', 'airport'),
+('ZZS', '郑州东站', 'Zhengzhou East Railway Station', 'ZZ', 'train_station'),
 -- 长沙
-('CSX', '黄花国际机场', 'CS', 'airport'),
-('CSS', '长沙南站', 'CS', 'train_station'),
+('CSX', '黄花国际机场', 'Huanghua International Airport', 'CS', 'airport'),
+('CSS', '长沙南站', 'Changsha South Railway Station', 'CS', 'train_station'),
 -- 沈阳
-('SHE', '桃仙国际机场', 'SY', 'airport'),
-('SYS', '沈阳北站', 'SY', 'train_station'),
-('SYH', '沈阳站', 'SY', 'train_station'),
+('SHE', '桃仙国际机场', 'Taoxian International Airport', 'SY', 'airport'),
+('SYS', '沈阳北站', 'Shenyang North Railway Station', 'SY', 'train_station'),
+('SYH', '沈阳站', 'Shenyang Railway Station', 'SY', 'train_station'),
 -- 青岛
-('TAO', '胶东国际机场', 'QD', 'airport'),
-('QDS', '青岛北站', 'QD', 'train_station'),
+('TAO', '胶东国际机场', 'Jiaodong International Airport', 'QD', 'airport'),
+('QDS', '青岛北站', 'Qingdao North Railway Station', 'QD', 'train_station'),
 -- 宁波
-('NGB', '栎社国际机场', 'NB', 'airport'),
-('NBS', '宁波站', 'NB', 'train_station'),
+('NGB', '栎社国际机场', 'Lishe International Airport', 'NB', 'airport'),
+('NBS', '宁波站', 'Ningbo Railway Station', 'NB', 'train_station'),
 -- 大连
-('DLC', '周水子国际机场', 'DL', 'airport'),
-('DLS', '大连北站', 'DL', 'train_station'),
+('DLC', '周水子国际机场', 'Zhoushuizi International Airport', 'DL', 'airport'),
+('DLS', '大连北站', 'Dalian North Railway Station', 'DL', 'train_station'),
 -- 厦门
-('XMN', '高崎国际机场', 'XM', 'airport'),
-('XMS', '厦门站', 'XM', 'train_station'),
+('XMN', '高崎国际机场', 'Gaoqi International Airport', 'XM', 'airport'),
+('XMS', '厦门站', 'Xiamen Railway Station', 'XM', 'train_station'),
 -- 哈尔滨
-('HRB', '太平国际机场', 'HE', 'airport'),
-('HES', '哈尔滨西站', 'HE', 'train_station'),
+('HRB', '太平国际机场', 'Taiping International Airport', 'HE', 'airport'),
+('HES', '哈尔滨西站', 'Harbin West Railway Station', 'HE', 'train_station'),
 -- 济南
-('TNA', '遥墙国际机场', 'JN', 'airport'),
-('JNS', '济南西站', 'JN', 'train_station'),
+('TNA', '遥墙国际机场', 'Yaoqiang International Airport', 'JN', 'airport'),
+('JNS', '济南西站', 'Jinan West Railway Station', 'JN', 'train_station'),
 -- 合肥
-('HFE', '新桥国际机场', 'HF', 'airport'),
-('HFS', '合肥南站', 'HF', 'train_station'),
+('HFE', '新桥国际机场', 'Xinqiao International Airport', 'HF', 'airport'),
+('HFS', '合肥南站', 'Hefei South Railway Station', 'HF', 'train_station'),
 -- 福州
-('FOC', '长乐国际机场', 'FZ', 'airport'),
-('FZS', '福州站', 'FZ', 'train_station'),
+('FOC', '长乐国际机场', 'Changle International Airport', 'FZ', 'airport'),
+('FZS', '福州站', 'Fuzhou Railway Station', 'FZ', 'train_station'),
 -- 南宁
-('NNG', '吴圩国际机场', 'NN', 'airport'),
-('NNS', '南宁东站', 'NN', 'train_station'),
+('NNG', '吴圩国际机场', 'Wuxu International Airport', 'NN', 'airport'),
+('NNS', '南宁东站', 'Nanning East Railway Station', 'NN', 'train_station'),
 -- 昆明
-('KMG', '长水国际机场', 'KMG', 'airport'),
-('KMGS', '昆明南站', 'KMG', 'train_station'),
+('KMG', '长水国际机场', 'Changshui International Airport', 'KMG', 'airport'),
+('KMGS', '昆明南站', 'Kunming South Railway Station', 'KMG', 'train_station'),
 -- 长春
-('CGQ', '龙嘉国际机场', 'CC', 'airport'),
-('CCS', '长春站', 'CC', 'train_station'),
+('CGQ', '龙嘉国际机场', 'Longjia International Airport', 'CC', 'airport'),
+('CCS', '长春站', 'Changchun Railway Station', 'CC', 'train_station'),
 -- 石家庄
-('SJW', '正定国际机场', 'SJZ', 'airport'),
-('SJZS', '石家庄站', 'SJZ', 'train_station'),
+('SJW', '正定国际机场', 'Zhengding International Airport', 'SJZ', 'airport'),
+('SJZS', '石家庄站', 'Shijiazhuang Railway Station', 'SJZ', 'train_station'),
 -- 贵阳
-('KWE', '龙洞堡国际机场', 'GY', 'airport'),
-('GYS', '贵阳北站', 'GY', 'train_station'),
+('KWE', '龙洞堡国际机场', 'Longdongbao International Airport', 'GY', 'airport'),
+('GYS', '贵阳北站', 'Guiyang North Railway Station', 'GY', 'train_station'),
 -- 兰州
-('LHW', '中川国际机场', 'LZ', 'airport'),
-('LZS', '兰州西站', 'LZ', 'train_station'),
+('LHW', '中川国际机场', 'Zhongchuan International Airport', 'LZ', 'airport'),
+('LZS', '兰州西站', 'Lanzhou West Railway Station', 'LZ', 'train_station'),
 -- 乌鲁木齐
-('URC', '地窝堡国际机场', 'WLMQ', 'airport'),
-('WLMQS', '乌鲁木齐站', 'WLMQ', 'train_station'),
+('URC', '地窝堡国际机场', 'Diwopu International Airport', 'WLMQ', 'airport'),
+('WLMQS', '乌鲁木齐站', 'Urumqi Railway Station', 'WLMQ', 'train_station'),
 -- 呼和浩特
-('HET', '白塔国际机场', 'HUZ', 'airport'),
-('HUZS', '呼和浩特东站', 'HUZ', 'train_station'),
+('HET', '白塔国际机场', 'Baita International Airport', 'HUZ', 'airport'),
+('HUZS', '呼和浩特东站', 'Hohhot East Railway Station', 'HUZ', 'train_station'),
 -- 银川
-('INC', '河东国际机场', 'YC', 'airport'),
-('YCS', '银川站', 'YC', 'train_station'),
+('INC', '河东国际机场', 'Hedong International Airport', 'YC', 'airport'),
+('YCS', '银川站', 'Yinchuan Railway Station', 'YC', 'train_station'),
 -- 西宁
-('XNN', '曹家堡国际机场', 'XN', 'airport'),
-('XNS', '西宁站', 'XN', 'train_station'),
+('XNN', '曹家堡国际机场', 'Caojiabao International Airport', 'XN', 'airport'),
+('XNS', '西宁站', 'Xining Railway Station', 'XN', 'train_station'),
 -- 拉萨
-('LXA', '贡嘎国际机场', 'LS', 'airport'),
-('LSS', '拉萨站', 'LS', 'train_station'),
+('LXA', '贡嘎国际机场', 'Gonggar International Airport', 'LS', 'airport'),
+('LSS', '拉萨站', 'Lhasa Railway Station', 'LS', 'train_station'),
 -- 太原
-('TYN', '武宿国际机场', 'TY', 'airport'),
-('TYS', '太原南站', 'TY', 'train_station'),
+('TYN', '武宿国际机场', 'Wusu International Airport', 'TY', 'airport'),
+('TYS', '太原南站', 'Taiyuan South Railway Station', 'TY', 'train_station'),
 -- 南通
-('NTG', '兴东国际机场', 'NT', 'airport'),
-('NTS', '南通站', 'NT', 'train_station'),
+('NTG', '兴东国际机场', 'Xingdong International Airport', 'NT', 'airport'),
+('NTS', '南通站', 'Nantong Railway Station', 'NT', 'train_station'),
 -- 无锡
-('WUX', '硕放国际机场', 'WX', 'airport'),
-('WXS', '无锡东站', 'WX', 'train_station'),
+('WUX', '硕放国际机场', 'Shuofang International Airport', 'WX', 'airport'),
+('WXS', '无锡东站', 'Wuxi East Railway Station', 'WX', 'train_station'),
 -- 徐州
-('XUZ', '观音国际机场', 'XZ', 'airport'),
-('XZS', '徐州东站', 'XZ', 'train_station'),
+('XUZ', '观音国际机场', 'Guanyin International Airport', 'XZ', 'airport'),
+('XZS', '徐州东站', 'Xuzhou East Railway Station', 'XZ', 'train_station'),
 -- 珠海
-('ZUH', '金湾机场', 'BO', 'airport'),
-('BOS', '珠海站', 'BO', 'train_station'),
+('ZUH', '金湾机场', 'Jinwan Airport', 'BO', 'airport'),
+('BOS', '珠海站', 'Zhuhai Railway Station', 'BO', 'train_station'),
 -- 烟台
-('YNT', '蓬莱国际机场', 'YT', 'airport'),
-('YTS', '烟台站', 'YT', 'train_station'),
+('YNT', '蓬莱国际机场', 'Penglai International Airport', 'YT', 'airport'),
+('YTS', '烟台站', 'Yantai Railway Station', 'YT', 'train_station'),
 -- 威海
-('WEH', '大水泊国际机场', 'SW', 'airport'),
-('SWS', '威海站', 'SW', 'train_station');
+('WEH', '大水泊国际机场', 'Dashuipo International Airport', 'SW', 'airport'),
+('SWS', '威海站', 'Weihai Railway Station', 'SW', 'train_station');
 
 -- ============================================
 -- 插入飞机路线（120条）

@@ -66,22 +66,22 @@ class InMemoryCatalogRepository(CatalogRepository):
                 CityRecord(code="SZ", name="深圳", name_en="Shenzhen"),
             ),
             stations=(
-                StationRecord(code="PEK", name="首都国际机场", city_code="BJ", station_type="airport"),
-                StationRecord(code="BJS", name="北京南站", city_code="BJ", station_type="train_station"),
-                StationRecord(code="PVG", name="浦东国际机场", city_code="SH", station_type="airport"),
-                StationRecord(code="SHH", name="上海虹桥站", city_code="SH", station_type="train_station"),
-                StationRecord(code="NKG", name="禄口国际机场", city_code="NJ", station_type="airport"),
-                StationRecord(code="NJS", name="南京南站", city_code="NJ", station_type="train_station"),
-                StationRecord(code="WUH", name="天河国际机场", city_code="WH", station_type="airport"),
-                StationRecord(code="WHH", name="汉口站", city_code="WH", station_type="train_station"),
-                StationRecord(code="XIY", name="咸阳国际机场", city_code="XA", station_type="airport"),
-                StationRecord(code="XAS", name="西安北站", city_code="XA", station_type="train_station"),
-                StationRecord(code="CTU", name="双流国际机场", city_code="CD", station_type="airport"),
-                StationRecord(code="CDS", name="成都东站", city_code="CD", station_type="train_station"),
-                StationRecord(code="CAN", name="白云国际机场", city_code="GZ", station_type="airport"),
-                StationRecord(code="GZS", name="广州南站", city_code="GZ", station_type="train_station"),
-                StationRecord(code="SZX", name="宝安国际机场", city_code="SZ", station_type="airport"),
-                StationRecord(code="SZS", name="深圳北站", city_code="SZ", station_type="train_station"),
+                StationRecord(code="PEK", name="首都国际机场", city_code="BJ", station_type="airport", name_en="Capital International Airport"),
+                StationRecord(code="BJS", name="北京南站", city_code="BJ", station_type="train_station", name_en="Beijing South Railway Station"),
+                StationRecord(code="PVG", name="浦东国际机场", city_code="SH", station_type="airport", name_en="Pudong International Airport"),
+                StationRecord(code="SHH", name="上海虹桥站", city_code="SH", station_type="train_station", name_en="Shanghai Hongqiao Railway Station"),
+                StationRecord(code="NKG", name="禄口国际机场", city_code="NJ", station_type="airport", name_en="Lukou International Airport"),
+                StationRecord(code="NJS", name="南京南站", city_code="NJ", station_type="train_station", name_en="Nanjing South Railway Station"),
+                StationRecord(code="WUH", name="天河国际机场", city_code="WH", station_type="airport", name_en="Tianhe International Airport"),
+                StationRecord(code="WHH", name="汉口站", city_code="WH", station_type="train_station", name_en="Hankou Railway Station"),
+                StationRecord(code="XIY", name="咸阳国际机场", city_code="XA", station_type="airport", name_en="Xianyang International Airport"),
+                StationRecord(code="XAS", name="西安北站", city_code="XA", station_type="train_station", name_en="Xi'an North Railway Station"),
+                StationRecord(code="CTU", name="双流国际机场", city_code="CD", station_type="airport", name_en="Shuangliu International Airport"),
+                StationRecord(code="CDS", name="成都东站", city_code="CD", station_type="train_station", name_en="Chengdu East Railway Station"),
+                StationRecord(code="CAN", name="白云国际机场", city_code="GZ", station_type="airport", name_en="Baiyun International Airport"),
+                StationRecord(code="GZS", name="广州南站", city_code="GZ", station_type="train_station", name_en="Guangzhou South Railway Station"),
+                StationRecord(code="SZX", name="宝安国际机场", city_code="SZ", station_type="airport", name_en="Bao'an International Airport"),
+                StationRecord(code="SZS", name="深圳北站", city_code="SZ", station_type="train_station", name_en="Shenzhen North Railway Station"),
             ),
             routes=(
                 RouteRecord(
@@ -305,7 +305,7 @@ class MySQLCatalogRepository(CatalogRepository):
 
             cursor.execute(
                 """
-                SELECT code, name, city_code, type
+                SELECT code, name, name_en, city_code, type
                 FROM stations
                 ORDER BY code
                 """
@@ -316,6 +316,7 @@ class MySQLCatalogRepository(CatalogRepository):
                     name=row["name"],
                     city_code=row["city_code"],
                     station_type=row["type"],
+                    name_en=row["name_en"] or "",
                 )
                 for row in cursor.fetchall()
             )

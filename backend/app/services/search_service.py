@@ -74,6 +74,36 @@ class SearchService:
             limit=settings.max_routes,
         )
 
+        station_map = {station.code: station for station in catalog.stations}
+        city_map = {city.code: city for city in catalog.cities}
+        route_map = {route.id: route for route in catalog.routes}
+
+        def _enrich_leg(planned_leg):
+            route_rec = route_map.get(planned_leg.route_id)
+            from_station_rec = station_map.get(route_rec.from_station) if route_rec else None
+            to_station_rec = station_map.get(route_rec.to_station) if route_rec else None
+            from_city_rec = city_map.get(planned_leg.from_city_code)
+            to_city_rec = city_map.get(planned_leg.to_city_code)
+            return Leg(
+                transport_type=planned_leg.transport_type,
+                from_city=planned_leg.from_city,
+                to_city=planned_leg.to_city,
+                from_city_en=from_city_rec.name_en if from_city_rec else "",
+                to_city_en=to_city_rec.name_en if to_city_rec else "",
+                from_station=planned_leg.from_station,
+                to_station=planned_leg.to_station,
+                from_station_en=from_station_rec.name_en if from_station_rec else "",
+                to_station_en=to_station_rec.name_en if to_station_rec else "",
+                departure_date=planned_leg.departure_at.strftime("%Y-%m-%d"),
+                departure_time=planned_leg.departure_time,
+                arrival_date=planned_leg.arrival_at.strftime("%Y-%m-%d"),
+                arrival_time=planned_leg.arrival_time,
+                duration_minutes=planned_leg.duration_minutes,
+                price=planned_leg.price,
+                company=planned_leg.company,
+                flight_train_no=planned_leg.flight_train_no,
+            )
+
         routes = [
             RoutePlan(
                 id=route.id,
@@ -82,24 +112,7 @@ class SearchService:
                 transfer_count=route.transfer_count,
                 score=route.score,
                 tag=route.tag,
-                legs=[
-                    Leg(
-                        transport_type=leg.transport_type,
-                        from_city=leg.from_city,
-                        to_city=leg.to_city,
-                        from_station=leg.from_station,
-                        to_station=leg.to_station,
-                        departure_date=leg.departure_at.strftime("%Y-%m-%d"),
-                        departure_time=leg.departure_time,
-                        arrival_date=leg.arrival_at.strftime("%Y-%m-%d"),
-                        arrival_time=leg.arrival_time,
-                        duration_minutes=leg.duration_minutes,
-                        price=leg.price,
-                        company=leg.company,
-                        flight_train_no=leg.flight_train_no,
-                    )
-                    for leg in route.legs
-                ],
+                legs=[_enrich_leg(leg) for leg in route.legs],
             )
             for route in planned_routes
         ]
@@ -131,13 +144,13 @@ class SearchService:
     def describe_ai_search(self) -> str:
         return type(self._ai_chat_client).__name__
 
-    def create_ai_session(self, opening_message: str) -> AISearchResponse:
+    def create_ai_session(self, opening_message: str, language: str = "zh") -> AISearchResponse:
         session = AISearchSession(session_id=f"ai_{uuid4().hex}")
         with self._ai_session_lock:
             self._ai_sessions[session.session_id] = session
-        return self.append_ai_message(session.session_id, opening_message)
+        return self.append_ai_message(session.session_id, opening_message, language=language)
 
-    def append_ai_message(self, session_id: str, message: str) -> AISearchResponse:
+    def append_ai_message(self, session_id: str, message: str, language: str = "zh") -> AISearchResponse:
         session = self._get_ai_session(session_id)
         if session.status == AISearchSessionStatus.COMPLETED:
             return self._build_ai_response(session)
@@ -149,6 +162,7 @@ class SearchService:
                 conversation=session.conversation,
                 draft_request=session.parsed_request,
                 cities=catalog.cities,
+                language=language,
             )
         except AIClientError:
             raise

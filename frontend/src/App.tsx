@@ -1,13 +1,16 @@
 import HomePage from './pages/HomePage'
 import { ThemeProvider } from './context/ThemeContext'
+import { LocaleProvider } from './context/LocaleContext'
 
 function App() {
   return (
-    <ThemeProvider>
-      <div className="app">
-        <HomePage />
-      </div>
-    </ThemeProvider>
+    <LocaleProvider>
+      <ThemeProvider>
+        <div className="app">
+          <HomePage />
+        </div>
+      </ThemeProvider>
+    </LocaleProvider>
   )
 }
 

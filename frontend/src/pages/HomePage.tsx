@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { City, OptimizationTarget, RoutePlan, SearchRequest } from '../types';
 import { cityApi, searchApi } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
+import { useLocale } from '../context/LocaleContext';
 import TopNav from '../components/TopNav';
 import SearchTab from '../components/SearchTab';
 import AiSearchTab from '../components/AiSearchTab';
@@ -15,6 +16,7 @@ const COMPACT_TRANSITION_MS = 550;
 
 export default function HomePage() {
   const { isDark } = useTheme();
+  const { lang, t } = useLocale();
   const [activeTab, setActiveTab] = useState<'search' | 'ai' | 'favorites'>('search');
   const [isCompact, setIsCompact] = useState(false);
   const [aiFooterOpen, setAiFooterOpen] = useState(false);
@@ -145,16 +147,16 @@ export default function HomePage() {
       setCities(data);
       if (data.length > 0) setFromCity(data[0].code);
       if (data.length > 1) setToCity(data[1].code);
-    }).catch(() => setError('加载城市列表失败'));
+    }).catch(() => setError(t('errors.loadCitiesFailed')));
   }, []);
 
   const handleSearch = useCallback(async (advanced: AdvancedFilters) => {
     if (!fromCity || !toCity || !date) {
-      setError('请填写完整的搜索信息');
+      setError(t('errors.incompleteSearch'));
       return;
     }
     if (fromCity === toCity) {
-      setError('出发城市和目的城市不能相同');
+      setError(t('errors.sameCity'));
       return;
     }
     setError('');
@@ -198,7 +200,7 @@ export default function HomePage() {
       const response = await searchApi.search(request);
       setRoutes(response.routes);
     } catch (err: any) {
-      const msg = err?.response?.data?.detail || '搜索失败，请稍后重试';
+      const msg = err?.response?.data?.detail || t('errors.searchFailed');
       setError(msg);
     } finally {
       setLoading(false);
@@ -223,6 +225,9 @@ export default function HomePage() {
   const formatDateLabel = (iso: string) => {
     if (!iso) return '';
     const d = new Date(iso + 'T00:00:00');
+    if (lang === 'en') {
+      return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+    }
     return `${d.getMonth() + 1}月${d.getDate()}日`;
   };
   const compactLabel = `${fromCityName} → ${toCityName} · ${formatDateLabel(date)}`;

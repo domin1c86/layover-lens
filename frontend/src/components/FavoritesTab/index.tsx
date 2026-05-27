@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { RoutePlan } from '../../types';
 import ResultList from '../SearchTab/ResultList';
+import { useLocale } from '../../context/LocaleContext';
 import './FavoritesTab.css';
 
 const STORAGE_KEY = 'layover-lens-favorites';
@@ -17,9 +18,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '北京',
+        from_city_en: 'Beijing',
         to_city: '上海',
+        to_city_en: 'Shanghai',
         from_station: '首都机场T3',
+        from_station_en: 'Capital Airport T3',
         to_station: '虹桥机场T2',
+        to_station_en: 'Hongqiao Airport T2',
         departure_date: '2026-05-24',
         departure_time: '08:30',
         arrival_date: '2026-05-24',
@@ -41,9 +46,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '上海',
+        from_city_en: 'Shanghai',
         to_city: '广州',
+        to_city_en: 'Guangzhou',
         from_station: '浦东机场T1',
+        from_station_en: 'Pudong Airport T1',
         to_station: '白云机场T2',
+        to_station_en: 'Baiyun Airport T2',
         departure_date: '2026-05-25',
         departure_time: '09:00',
         arrival_date: '2026-05-25',
@@ -66,9 +75,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '北京',
+        from_city_en: 'Beijing',
         to_city: '武汉',
+        to_city_en: 'Wuhan',
         from_station: '大兴机场',
+        from_station_en: 'Daxing Airport',
         to_station: '天河机场T3',
+        to_station_en: 'Tianhe Airport T3',
         departure_date: '2026-05-26',
         departure_time: '07:15',
         arrival_date: '2026-05-26',
@@ -81,9 +94,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '武汉',
+        from_city_en: 'Wuhan',
         to_city: '深圳',
+        to_city_en: 'Shenzhen',
         from_station: '天河机场T3',
+        from_station_en: 'Tianhe Airport T3',
         to_station: '宝安机场T3',
+        to_station_en: 'Bao\'an Airport T3',
         departure_date: '2026-05-26',
         departure_time: '11:00',
         arrival_date: '2026-05-26',
@@ -105,9 +122,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '成都',
+        from_city_en: 'Chengdu',
         to_city: '杭州',
+        to_city_en: 'Hangzhou',
         from_station: '天府机场T2',
+        from_station_en: 'Tianfu Airport T2',
         to_station: '萧山机场T4',
+        to_station_en: 'Xiaoshan Airport T4',
         departure_date: '2026-05-24',
         departure_time: '10:20',
         arrival_date: '2026-05-24',
@@ -130,9 +151,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'train',
         from_city: '西安',
+        from_city_en: 'Xi\'an',
         to_city: '南京',
+        to_city_en: 'Nanjing',
         from_station: '西安北站',
+        from_station_en: 'Xi\'an North Railway Station',
         to_station: '南京南站',
+        to_station_en: 'Nanjing South Railway Station',
         departure_date: '2026-05-25',
         departure_time: '08:00',
         arrival_date: '2026-05-25',
@@ -155,9 +180,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '武汉',
+        from_city_en: 'Wuhan',
         to_city: '重庆',
+        to_city_en: 'Chongqing',
         from_station: '天河机场T3',
+        from_station_en: 'Tianhe Airport T3',
         to_station: '江北机场T3',
+        to_station_en: 'Jiangbei Airport T3',
         departure_date: '2026-05-26',
         departure_time: '14:00',
         arrival_date: '2026-05-26',
@@ -179,9 +208,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '广州',
+        from_city_en: 'Guangzhou',
         to_city: '北京',
+        to_city_en: 'Beijing',
         from_station: '白云机场T2',
+        from_station_en: 'Baiyun Airport T2',
         to_station: '首都机场T3',
+        to_station_en: 'Capital Airport T3',
         departure_date: '2026-05-24',
         departure_time: '16:30',
         arrival_date: '2026-05-24',
@@ -203,9 +236,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '深圳',
+        from_city_en: 'Shenzhen',
         to_city: '上海',
+        to_city_en: 'Shanghai',
         from_station: '宝安机场T3',
+        from_station_en: 'Bao\'an Airport T3',
         to_station: '虹桥机场T2',
+        to_station_en: 'Hongqiao Airport T2',
         departure_date: '2026-05-25',
         departure_time: '11:30',
         arrival_date: '2026-05-25',
@@ -227,9 +264,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'train',
         from_city: '杭州',
+        from_city_en: 'Hangzhou',
         to_city: '成都',
+        to_city_en: 'Chengdu',
         from_station: '杭州东站',
+        from_station_en: 'Hangzhou East Railway Station',
         to_station: '成都东站',
+        to_station_en: 'Chengdu East Railway Station',
         departure_date: '2026-05-26',
         departure_time: '07:45',
         arrival_date: '2026-05-26',
@@ -251,9 +292,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '南京',
+        from_city_en: 'Nanjing',
         to_city: '西安',
+        to_city_en: 'Xi\'an',
         from_station: '禄口机场T1',
+        from_station_en: 'Lukou Airport T1',
         to_station: '咸阳机场T3',
+        to_station_en: 'Xianyang Airport T3',
         departure_date: '2026-05-24',
         departure_time: '13:10',
         arrival_date: '2026-05-24',
@@ -275,9 +320,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '重庆',
+        from_city_en: 'Chongqing',
         to_city: '武汉',
+        to_city_en: 'Wuhan',
         from_station: '江北机场T3',
+        from_station_en: 'Jiangbei Airport T3',
         to_station: '天河机场T3',
+        to_station_en: 'Tianhe Airport T3',
         departure_date: '2026-05-25',
         departure_time: '09:45',
         arrival_date: '2026-05-25',
@@ -299,9 +348,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '北京',
+        from_city_en: 'Beijing',
         to_city: '成都',
+        to_city_en: 'Chengdu',
         from_station: '大兴机场',
+        from_station_en: 'Daxing Airport',
         to_station: '天府机场T2',
+        to_station_en: 'Tianfu Airport T2',
         departure_date: '2026-05-26',
         departure_time: '12:00',
         arrival_date: '2026-05-26',
@@ -323,9 +376,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '上海',
+        from_city_en: 'Shanghai',
         to_city: '深圳',
+        to_city_en: 'Shenzhen',
         from_station: '浦东机场T2',
+        from_station_en: '',
         to_station: '宝安机场T3',
+        to_station_en: 'Bao\'an Airport T3',
         departure_date: '2026-05-24',
         departure_time: '15:00',
         arrival_date: '2026-05-24',
@@ -347,9 +404,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '广州',
+        from_city_en: 'Guangzhou',
         to_city: '长沙',
+        to_city_en: 'Changsha',
         from_station: '白云机场T2',
+        from_station_en: 'Baiyun Airport T2',
         to_station: '黄花机场T2',
+        to_station_en: 'Huanghua Airport T2',
         departure_date: '2026-05-25',
         departure_time: '08:30',
         arrival_date: '2026-05-25',
@@ -362,9 +423,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'train',
         from_city: '长沙',
+        from_city_en: 'Changsha',
         to_city: '杭州',
+        to_city_en: 'Hangzhou',
         from_station: '长沙南站',
+        from_station_en: 'Changsha South Railway Station',
         to_station: '杭州东站',
+        to_station_en: 'Hangzhou East Railway Station',
         departure_date: '2026-05-25',
         departure_time: '11:00',
         arrival_date: '2026-05-25',
@@ -386,9 +451,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '成都',
+        from_city_en: 'Chengdu',
         to_city: '北京',
+        to_city_en: 'Beijing',
         from_station: '双流机场T2',
+        from_station_en: 'Shuangliu Airport T2',
         to_station: '首都机场T3',
+        to_station_en: 'Capital Airport T3',
         departure_date: '2026-05-26',
         departure_time: '07:00',
         arrival_date: '2026-05-26',
@@ -411,9 +480,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'train',
         from_city: '西安',
+        from_city_en: 'Xi\'an',
         to_city: '重庆',
+        to_city_en: 'Chongqing',
         from_station: '西安北站',
+        from_station_en: 'Xi\'an North Railway Station',
         to_station: '重庆北站',
+        to_station_en: 'Chongqing North Railway Station',
         departure_date: '2026-05-24',
         departure_time: '09:20',
         arrival_date: '2026-05-24',
@@ -435,9 +508,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '武汉',
+        from_city_en: 'Wuhan',
         to_city: '南京',
+        to_city_en: 'Nanjing',
         from_station: '天河机场T3',
+        from_station_en: 'Tianhe Airport T3',
         to_station: '禄口机场T1',
+        to_station_en: 'Lukou Airport T1',
         departure_date: '2026-05-25',
         departure_time: '10:45',
         arrival_date: '2026-05-25',
@@ -459,9 +536,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '杭州',
+        from_city_en: 'Hangzhou',
         to_city: '广州',
+        to_city_en: 'Guangzhou',
         from_station: '萧山机场T4',
+        from_station_en: 'Xiaoshan Airport T4',
         to_station: '白云机场T2',
+        to_station_en: 'Baiyun Airport T2',
         departure_date: '2026-05-26',
         departure_time: '14:20',
         arrival_date: '2026-05-26',
@@ -484,9 +565,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'train',
         from_city: '南京',
+        from_city_en: 'Nanjing',
         to_city: '上海',
+        to_city_en: 'Shanghai',
         from_station: '南京南站',
+        from_station_en: 'Nanjing South Railway Station',
         to_station: '上海虹桥站',
+        to_station_en: 'Shanghai Hongqiao Railway Station',
         departure_date: '2026-05-24',
         departure_time: '18:00',
         arrival_date: '2026-05-24',
@@ -508,9 +593,13 @@ const SEED_FAVORITES: RoutePlan[] = [
       {
         transport_type: 'flight',
         from_city: '重庆',
+        from_city_en: 'Chongqing',
         to_city: '北京',
+        to_city_en: 'Beijing',
         from_station: '江北机场T3',
+        from_station_en: 'Jiangbei Airport T3',
         to_station: '大兴机场',
+        to_station_en: 'Daxing Airport',
         departure_date: '2026-05-25',
         departure_time: '11:00',
         arrival_date: '2026-05-25',
@@ -568,24 +657,25 @@ export function useFavorites() {
 
 export default function FavoritesTab() {
   const { favorites } = useFavorites();
+  const { t } = useLocale();
 
   return (
     <div className="favorites">
       <div className="container">
-        <h2 className="results-header">我的收藏</h2>
+        <h2 className="results-header">{t('favorites.title')}</h2>
         {favorites.length > 0 ? (
           <ResultList
             routes={favorites}
             loading={false}
             error=""
             searched={true}
-            header={`共 ${favorites.length} 条收藏`}
+            header={t('favorites.count', { count: String(favorites.length) })}
           />
         ) : (
           <div className="empty-state">
             <div className="empty-state__icon">❤️</div>
-            <div className="empty-state__title">暂无收藏的行程</div>
-            <div className="empty-state__subtitle">在搜索结果中点击收藏按钮添加</div>
+            <div className="empty-state__title">{t('favorites.emptyTitle')}</div>
+            <div className="empty-state__subtitle">{t('favorites.emptySubtitle')}</div>
           </div>
         )}
       </div>

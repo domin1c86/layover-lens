@@ -30,6 +30,7 @@ class AIChatClient(Protocol):
         conversation: list[AIChatMessage],
         draft_request: ParsedSearchRequest,
         cities: tuple[CityRecord, ...],
+        language: str = "zh",
     ) -> AIConversationTurn:
         ...
 
@@ -47,6 +48,7 @@ class DeepSeekChatClient:
         conversation: list[AIChatMessage],
         draft_request: ParsedSearchRequest,
         cities: tuple[CityRecord, ...],
+        language: str = "zh",
     ) -> AIConversationTurn:
         if not self._api_key:
             raise AIClientError("DeepSeek API key is not configured.")
@@ -58,18 +60,22 @@ class DeepSeekChatClient:
             draft_request.model_dump(mode="json", exclude_none=True),
             ensure_ascii=False,
         )
+        system_prompt = (
+            "你是 Layover Lens 的多轮搜索助手。你的职责是通过聊天逐步补全用户的路线检索条件，"
+            "优先理解用户偏好，并用简洁自然的中文继续追问缺失或模糊的条件。"
+            "当已具备执行搜索的最低必要字段（from_city, to_city, travel_date）时，"
+            "你还应主动确认预算、交通方式、换乘、时间段、是否过夜、指定中转、排除城市等偏好。"
+            "如果用户尚未提供非必要字段，不要机械地一次性追问所有项，应根据上下文问最有价值的下一问。"
+            "当你认为条件已经足够并且用户偏好已基本明确时，请总结条件并询问用户是否确认开始搜索。"
+            "你必须输出 json 对象，不要输出 markdown。"
+        )
+        if language == "en":
+            system_prompt += " Please respond in English."
+
         messages = [
             {
                 "role": "system",
-                "content": (
-                    "你是 Layover Lens 的多轮搜索助手。你的职责是通过聊天逐步补全用户的路线检索条件，"
-                    "优先理解用户偏好，并用简洁自然的中文继续追问缺失或模糊的条件。"
-                    "当已具备执行搜索的最低必要字段（from_city, to_city, travel_date）时，"
-                    "你还应主动确认预算、交通方式、换乘、时间段、是否过夜、指定中转、排除城市等偏好。"
-                    "如果用户尚未提供非必要字段，不要机械地一次性追问所有项，应根据上下文问最有价值的下一问。"
-                    "当你认为条件已经足够并且用户偏好已基本明确时，请总结条件并询问用户是否确认开始搜索。"
-                    "你必须输出 json 对象，不要输出 markdown。"
-                ),
+                "content": system_prompt,
             },
             {
                 "role": "system",

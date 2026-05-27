@@ -193,7 +193,7 @@ def test_search_supports_time_window_filters() -> None:
 
 
 def _mock_deepseek_multi_turn(monkeypatch) -> None:
-    def fake_respond(self, *, conversation, draft_request, cities):
+    def fake_respond(self, *, conversation, draft_request, cities, language="zh"):
         last_message = conversation[-1].content
         if "预算1300" in last_message:
             return type(

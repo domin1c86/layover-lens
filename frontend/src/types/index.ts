@@ -24,8 +24,12 @@ export interface Leg {
   transport_type: TransportType;
   from_city: string;
   to_city: string;
+  from_city_en: string;
+  to_city_en: string;
   from_station: string;
   to_station: string;
+  from_station_en: string;
+  to_station_en: string;
   departure_date: string;
   departure_time: string;
   arrival_date: string;

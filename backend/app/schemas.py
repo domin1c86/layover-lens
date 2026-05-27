@@ -47,8 +47,12 @@ class Leg(BaseModel):
     transport_type: TransportType
     from_city: str
     to_city: str
+    from_city_en: str = ""
+    to_city_en: str = ""
     from_station: str
     to_station: str
+    from_station_en: str = ""
+    to_station_en: str = ""
     departure_date: str
     departure_time: str
     arrival_date: str
@@ -159,6 +163,7 @@ class AISearchSessionCreateRequest(BaseModel):
 
 class AISearchSessionTurnRequest(BaseModel):
     message: str = Field(min_length=1, max_length=1000)
+    language: Optional[str] = Field(default="zh", pattern="^(zh|en)$")
 
 
 class AISearchSessionConfirmRequest(BaseModel):

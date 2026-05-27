@@ -43,10 +43,10 @@ export const aiSearchApi = {
     return response.data;
   },
 
-  sendMessage: async (sessionId: string, message: string): Promise<AiSessionResponse> => {
+  sendMessage: async (sessionId: string, message: string, language?: string): Promise<AiSessionResponse> => {
     const response = await apiClient.post<AiSessionResponse>(
       `/search/ai/sessions/${sessionId}/messages`,
-      { message }
+      { message, language }
     );
     return response.data;
   },

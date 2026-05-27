@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { SearchRequest, SearchResponse } from '../../types';
 import { aiSearchApi } from '../../services/api';
+import { useLocale } from '../../context/LocaleContext';
 import AiChatArea, { type AiChatMessage } from './AiChatArea';
 import './AiSearchTab.css';
 
@@ -32,11 +33,12 @@ function createEmptySession(): Session {
     status: 'idle',
     finalRequest: null,
     searchResponse: null,
-    title: '新对话',
+    title: '',
   };
 }
 
 export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabProps) {
+  const { lang, t } = useLocale();
   const [sessions, setSessions] = useState<Session[]>(() => [createEmptySession()]);
   const [activeSessionId, setActiveSessionId] = useState<string>(sessions[0].id);
   const [loading, setLoading] = useState(false);
@@ -147,7 +149,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
     const currentMessages = [...activeSession.messages, userMsg];
 
     const newTitle =
-      activeSession.messages.length === 0 && activeSession.title === '新对话'
+      activeSession.messages.length === 0 && activeSession.title === t('aiChat.newChat')
         ? text.slice(0, 10) + (text.length > 10 ? '...' : '')
         : activeSession.title;
 
@@ -158,7 +160,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
       if (!activeSession.sessionId) {
         response = await aiSearchApi.createSession(text);
       } else {
-        response = await aiSearchApi.sendMessage(activeSession.sessionId, text);
+        response = await aiSearchApi.sendMessage(activeSession.sessionId, text, lang);
       }
 
       const assistantMsg: AiChatMessage = { role: 'assistant', content: response.assistant_message };
@@ -174,7 +176,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
       });
     } catch (err: any) {
       const status = err?.response?.status;
-      const msg = status === 503 ? 'AI 搜索服务暂未配置，请使用普通搜索' : '请求失败，请稍后重试';
+      const msg = status === 503 ? t('aiChat.serviceUnavailable') : t('aiChat.requestFailed');
       setError(msg);
       updateActiveSession({
         messages: [...currentMessages, { role: 'assistant', content: msg }],
@@ -191,7 +193,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
       const response = await aiSearchApi.confirm(activeSession.sessionId, true);
       const assistantMsg: AiChatMessage = {
         role: 'assistant',
-        content: response.search_response ? '已为您找到以下路线：' : '搜索完成',
+        content: response.search_response ? t('aiChat.foundRoutes') : t('aiChat.searchComplete'),
         isSearchResult: true,
         searchData: response.search_response || undefined,
       };
@@ -201,7 +203,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
         searchResponse: response.search_response,
       });
     } catch {
-      setError('确认搜索失败');
+      setError(t('aiChat.confirmFailed'));
     } finally {
       setLoading(false);
     }
@@ -218,7 +220,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
         status: response.status as AiStatus,
       });
     } catch {
-      setError('操作失败');
+      setError(t('aiChat.operationFailed'));
     } finally {
       setLoading(false);
     }
@@ -258,7 +260,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
       <div className="ai-search__sidebar">
         <button className="ai-search__new-chat" onClick={newChat}>
           <span className="ai-search__new-chat-icon">+</span>
-          <span className="ai-search__new-chat-text">新对话</span>
+          <span className="ai-search__new-chat-text">{t('aiChat.newChat')}</span>
         </button>
         <div className="ai-search__history">
           {sessions.map((session) => {
@@ -370,7 +372,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
           data-about-btn
           onClick={onToggleAbout}
         >
-          关于本站
+          {t('aiChat.about')}
         </button>
       </div>
       <AiChatArea

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { City, OptimizationTarget, TransportType } from '../../types';
+import { useLocale } from '../../context/LocaleContext';
 import './SearchBar.css';
 
 interface SearchBarProps {
@@ -28,27 +29,6 @@ export interface AdvancedFilters {
   transportTypes: TransportType[];
 }
 
-const OPTIMIZE_LABELS: Record<OptimizationTarget, string> = {
-  price: '价格优先',
-  time: '时间优先',
-  transfer: '少换乘',
-  balanced: '综合推荐',
-};
-
-const TRANSFER_OPTIONS: { value: AdvancedFilters['transfer']; label: string }[] = [
-  { value: 'any', label: '不限' },
-  { value: 'yes', label: '是' },
-  { value: 'no', label: '否' },
-];
-
-const TRANSFER_TIME_OPTIONS: { value: AdvancedFilters['transferTime']; label: string }[] = [
-  { value: 'any', label: '不限' },
-  { value: 'short', label: '1小时以内' },
-  { value: 'medium', label: '1-3小时' },
-  { value: 'long', label: '3小时以上' },
-];
-
-
 /* ================= Custom Pickers ================= */
 
 const HOT_CITY_NAMES = new Set([
@@ -56,30 +36,14 @@ const HOT_CITY_NAMES = new Set([
   '郑州', '长沙', '天津', '苏州', '沈阳', '青岛', '厦门', '合肥',
 ]);
 
-const CITY_GROUPS = [
-  { key: 'hot', label: '热门选择' },
-  { key: 'abcd', label: 'ABCD' },
-  { key: 'efgh', label: 'EFGH' },
-  { key: 'ijkl', label: 'IJKL' },
-  { key: 'mnop', label: 'MNOP' },
-  { key: 'qrst', label: 'QRST' },
-  { key: 'uvwxyz', label: 'UVWXYZ' },
-];
-
-function getCityGroup(nameEn: string): string {
-  const first = (nameEn.charAt(0) || '').toLowerCase();
-  for (const g of CITY_GROUPS) {
-    if (g.key !== 'hot' && g.key.includes(first)) return g.key;
-  }
-  return 'uvwxyz';
-}
-
-function CityPicker({ cities, value, onChange, onClose, isOpen }: {
+function CityPicker({ cities, value, onChange, onClose, isOpen, cityGroups, lang }: {
   cities: City[];
   value: string;
   onChange: (val: string) => void;
   onClose: () => void;
   isOpen: boolean;
+  cityGroups: { key: string; label: string }[];
+  lang: 'zh' | 'en';
 }) {
   const [activeGroup, setActiveGroup] = useState('hot');
 
@@ -89,9 +53,13 @@ function CityPicker({ cities, value, onChange, onClose, isOpen }: {
     }
     return cities.filter((c) => {
       if (HOT_CITY_NAMES.has(c.name)) return false;
-      return getCityGroup(c.name_en) === activeGroup;
+      const first = (c.name_en.charAt(0) || '').toLowerCase();
+      for (const g of cityGroups) {
+        if (g.key !== 'hot' && g.key.includes(first)) return g.key === activeGroup;
+      }
+      return activeGroup === 'uvwxyz';
     });
-  }, [cities, activeGroup]);
+  }, [cities, activeGroup, cityGroups]);
 
   return (
     <AnimatePresence>
@@ -105,7 +73,7 @@ function CityPicker({ cities, value, onChange, onClose, isOpen }: {
           onClick={(e: React.MouseEvent) => e.stopPropagation()}
         >
           <div className="city-picker__tabs">
-            {CITY_GROUPS.map((g) => (
+            {cityGroups.map((g) => (
               <div
                 key={g.key}
                 className={`city-picker__tab ${activeGroup === g.key ? 'active' : ''}`}
@@ -122,7 +90,7 @@ function CityPicker({ cities, value, onChange, onClose, isOpen }: {
                 className={`picker-item ${c.code === value ? 'selected' : ''}`}
                 onClick={() => { onChange(c.code); onClose(); }}
               >
-                {c.name}
+                {lang === 'en' ? c.name_en : c.name}
               </div>
             ))}
           </div>
@@ -132,12 +100,15 @@ function CityPicker({ cities, value, onChange, onClose, isOpen }: {
   );
 }
 
-function MultiCityPicker({ cities, selected, onChange, onClose, isOpen }: {
+function MultiCityPicker({ cities, selected, onChange, onClose, isOpen, cityGroups, confirmLabel, lang }: {
   cities: City[];
   selected: string[];
   onChange: (val: string[]) => void;
   onClose: () => void;
   isOpen: boolean;
+  cityGroups: { key: string; label: string }[];
+  confirmLabel: string;
+  lang: 'zh' | 'en';
 }) {
   const [activeGroup, setActiveGroup] = useState('hot');
 
@@ -147,9 +118,13 @@ function MultiCityPicker({ cities, selected, onChange, onClose, isOpen }: {
     }
     return cities.filter((c) => {
       if (HOT_CITY_NAMES.has(c.name)) return false;
-      return getCityGroup(c.name_en) === activeGroup;
+      const first = (c.name_en.charAt(0) || '').toLowerCase();
+      for (const g of cityGroups) {
+        if (g.key !== 'hot' && g.key.includes(first)) return g.key === activeGroup;
+      }
+      return activeGroup === 'uvwxyz';
     });
-  }, [cities, activeGroup]);
+  }, [cities, activeGroup, cityGroups]);
 
   const toggleCity = (code: string) => {
     const next = selected.includes(code)
@@ -170,7 +145,7 @@ function MultiCityPicker({ cities, selected, onChange, onClose, isOpen }: {
           onClick={(e: React.MouseEvent) => e.stopPropagation()}
         >
           <div className="city-picker__tabs">
-            {CITY_GROUPS.map((g) => (
+            {cityGroups.map((g) => (
               <div
                 key={g.key}
                 className={`city-picker__tab ${activeGroup === g.key ? 'active' : ''}`}
@@ -187,12 +162,12 @@ function MultiCityPicker({ cities, selected, onChange, onClose, isOpen }: {
                 className={`picker-item ${selected.includes(c.code) ? 'selected' : ''}`}
                 onClick={() => toggleCity(c.code)}
               >
-                {c.name}
+                {lang === 'en' ? c.name_en : c.name}
               </div>
             ))}
           </div>
           <div className="city-picker__footer">
-            <button className="city-picker__confirm" onClick={onClose}>确定</button>
+            <button className="city-picker__confirm" onClick={onClose}>{confirmLabel}</button>
           </div>
         </motion.div>
       )}
@@ -200,11 +175,12 @@ function MultiCityPicker({ cities, selected, onChange, onClose, isOpen }: {
   );
 }
 
-function OptPicker({ value, onChange, onClose, isOpen }: {
+function OptPicker({ value, onChange, onClose, isOpen, labels }: {
   value: OptimizationTarget;
   onChange: (val: OptimizationTarget) => void;
   onClose: () => void;
   isOpen: boolean;
+  labels: Record<OptimizationTarget, string>;
 }) {
   return (
     <AnimatePresence>
@@ -223,7 +199,7 @@ function OptPicker({ value, onChange, onClose, isOpen }: {
               className={`picker-item ${o === value ? 'selected' : ''}`}
               onClick={() => { onChange(o); onClose(); }}
             >
-              {OPTIMIZE_LABELS[o]}
+              {labels[o]}
             </div>
           ))}
         </motion.div>
@@ -265,11 +241,13 @@ function SelectPicker<T extends string>({ options, value, onChange, onClose, isO
   );
 }
 
-function CalendarPicker({ value, onChange, onClose, isOpen }: {
+function CalendarPicker({ value, onChange, onClose, isOpen, lang, t }: {
   value: string;
   onChange: (val: string) => void;
   onClose: () => void;
   isOpen: boolean;
+  lang: 'zh' | 'en';
+  t: (key: string, vars?: Record<string, string>) => string;
 }) {
   const [viewDate, setViewDate] = useState(() => {
     const d = value ? new Date(value + 'T00:00:00') : new Date();
@@ -306,10 +284,15 @@ function CalendarPicker({ value, onChange, onClose, isOpen }: {
   const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
   const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
 
-  const weekDays = ['一', '二', '三', '四', '五', '六', '日'];
+  const weekDays = lang === 'en'
+    ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    : ['一', '二', '三', '四', '五', '六', '日'];
 
   const formatDateLabel = (iso: string) => {
     const d = new Date(iso + 'T00:00:00');
+    if (lang === 'en') {
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
     return `${d.getMonth() + 1}月${d.getDate()}日`;
   };
 
@@ -319,14 +302,23 @@ function CalendarPicker({ value, onChange, onClose, isOpen }: {
   const dayAfterTomorrow = new Date(today);
   dayAfterTomorrow.setDate(today.getDate() + 2);
 
-  const fmtQuick = (d: Date) => `${d.getMonth() + 1}月${d.getDate()}日`;
+  const fmtQuick = (d: Date) => {
+    if (lang === 'en') {
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+    return `${d.getMonth() + 1}月${d.getDate()}日`;
+  };
   const isoQuick = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
   const quickOptions = [
-    { label: '今天', sub: fmtQuick(today), date: isoQuick(today) },
-    { label: '明天', sub: fmtQuick(tomorrow), date: isoQuick(tomorrow) },
-    { label: '后天', sub: fmtQuick(dayAfterTomorrow), date: isoQuick(dayAfterTomorrow) },
+    { label: t('calendar.today'), sub: fmtQuick(today), date: isoQuick(today) },
+    { label: t('calendar.tomorrow'), sub: fmtQuick(tomorrow), date: isoQuick(tomorrow) },
+    { label: t('calendar.dayAfterTomorrow'), sub: fmtQuick(dayAfterTomorrow), date: isoQuick(dayAfterTomorrow) },
   ];
+
+  const headerMonth = lang === 'en'
+    ? viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : `${year}年${month + 1}月`;
 
   return (
     <AnimatePresence>
@@ -354,9 +346,9 @@ function CalendarPicker({ value, onChange, onClose, isOpen }: {
             </div>
             <div className="calendar-main">
               <div className="calendar-header">
-                <button type="button" onClick={prevMonth} aria-label="上个月">‹</button>
-                <span>{year}年{month + 1}月</span>
-                <button type="button" onClick={nextMonth} aria-label="下个月">›</button>
+                <button type="button" onClick={prevMonth} aria-label={t('calendar.prevMonth')}>‹</button>
+                <span>{headerMonth}</span>
+                <button type="button" onClick={nextMonth} aria-label={t('calendar.nextMonth')}>›</button>
               </div>
               <div className="calendar-weekdays">
                 {weekDays.map((d) => <span key={d}>{d}</span>)}
@@ -374,7 +366,7 @@ function CalendarPicker({ value, onChange, onClose, isOpen }: {
               </div>
               {value && (
                 <div className="calendar-footer">
-                  已选：{formatDateLabel(value)}
+                  {t('calendar.selected', { date: formatDateLabel(value) })}
                 </div>
               )}
             </div>
@@ -400,6 +392,7 @@ export default function SearchBar({
   onSearch,
   loading,
 }: SearchBarProps) {
+  const { lang, t } = useLocale();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [advanced, setAdvanced] = useState<AdvancedFilters>({
     transfer: 'any',
@@ -429,6 +422,36 @@ export default function SearchBar({
   const transferTimePickerRef = useRef<HTMLDivElement>(null);
   const advancedRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLDivElement>(null);
+
+  const optimizeLabels: Record<OptimizationTarget, string> = {
+    price: t('optimize.price'),
+    time: t('optimize.time'),
+    transfer: t('optimize.transfer'),
+    balanced: t('optimize.balanced'),
+  };
+
+  const transferOptions: { value: AdvancedFilters['transfer']; label: string }[] = [
+    { value: 'any', label: t('searchBar.transferAny') },
+    { value: 'yes', label: t('searchBar.transferYes') },
+    { value: 'no', label: t('searchBar.transferNo') },
+  ];
+
+  const transferTimeOptions: { value: AdvancedFilters['transferTime']; label: string }[] = [
+    { value: 'any', label: t('searchBar.transferAny') },
+    { value: 'short', label: t('searchBar.transferTimeShort') },
+    { value: 'medium', label: t('searchBar.transferTimeMedium') },
+    { value: 'long', label: t('searchBar.transferTimeLong') },
+  ];
+
+  const cityGroups = [
+    { key: 'hot', label: t('cityGroups.hot') },
+    { key: 'abcd', label: 'ABCD' },
+    { key: 'efgh', label: 'EFGH' },
+    { key: 'ijkl', label: 'IJKL' },
+    { key: 'mnop', label: 'MNOP' },
+    { key: 'qrst', label: 'QRST' },
+    { key: 'uvwxyz', label: 'UVWXYZ' },
+  ];
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -517,18 +540,24 @@ export default function SearchBar({
     });
   };
 
-  const fromName = cities.find((c) => c.code === fromCity)?.name || fromCity;
-  const toName = cities.find((c) => c.code === toCity)?.name || toCity;
+  const fromName = cities.find((c) => c.code === fromCity)?.[lang === 'en' ? 'name_en' : 'name'] || fromCity;
+  const toName = cities.find((c) => c.code === toCity)?.[lang === 'en' ? 'name_en' : 'name'] || toCity;
 
   const formatDateLabel = (iso: string) => {
-    if (!iso) return '选择日期';
+    if (!iso) return t('searchBar.selectDate');
     const d = new Date(iso + 'T00:00:00');
+    if (lang === 'en') {
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
     return `${d.getMonth() + 1}月${d.getDate()}日`;
   };
 
   const formatTransferCitiesLabel = (codes: string[]) => {
-    if (codes.length === 0) return '选择中转城市';
-    const names = codes.map((code) => cities.find((c) => c.code === code)?.name || code);
+    if (codes.length === 0) return t('searchBar.selectTransferCities');
+    const names = codes.map((code) => {
+      const city = cities.find((c) => c.code === code);
+      return city ? (lang === 'en' ? city.name_en : city.name) : code;
+    });
     return names.join('、');
   };
 
@@ -538,7 +567,7 @@ export default function SearchBar({
     <div className="search-combo">
       <div className={`search-bar ${hasOpenSegment ? 'has-open-segment' : ''}`}>
         <div className={`search-bar__segment ${fromOpen ? 'open' : ''}`} ref={fromRef} onClick={() => togglePicker('from')}>
-          <span className="search-bar__label">出发地</span>
+          <span className="search-bar__label">{t('searchBar.from')}</span>
           <span className="search-bar__value active">{fromName}</span>
           <CityPicker
             cities={cities}
@@ -546,10 +575,12 @@ export default function SearchBar({
             onChange={onFromChange}
             onClose={() => setFromOpen(false)}
             isOpen={fromOpen}
+            cityGroups={cityGroups}
+            lang={lang}
           />
         </div>
         <div className={`search-bar__segment ${toOpen ? 'open' : ''}`} ref={toRef} onClick={() => togglePicker('to')}>
-          <span className="search-bar__label">目的地</span>
+          <span className="search-bar__label">{t('searchBar.to')}</span>
           <span className="search-bar__value active">{toName}</span>
           <CityPicker
             cities={cities}
@@ -557,29 +588,34 @@ export default function SearchBar({
             onChange={onToChange}
             onClose={() => setToOpen(false)}
             isOpen={toOpen}
+            cityGroups={cityGroups}
+            lang={lang}
           />
         </div>
         <div className={`search-bar__segment ${dateOpen ? 'open' : ''}`} ref={dateRef} onClick={() => togglePicker('date')}>
-          <span className="search-bar__label">日期</span>
+          <span className="search-bar__label">{t('searchBar.date')}</span>
           <span className="search-bar__value active">{formatDateLabel(date)}</span>
           <CalendarPicker
             value={date}
             onChange={onDateChange}
             onClose={() => setDateOpen(false)}
             isOpen={dateOpen}
+            lang={lang}
+            t={t}
           />
         </div>
         <div className={`search-bar__segment ${optOpen ? 'open' : ''}`} ref={optRef} onClick={() => togglePicker('opt')}>
-          <span className="search-bar__label">优化目标</span>
-          <span className="search-bar__value">{OPTIMIZE_LABELS[optimize]}</span>
+          <span className="search-bar__label">{t('searchBar.optimize')}</span>
+          <span className="search-bar__value">{optimizeLabels[optimize]}</span>
           <OptPicker
             value={optimize}
             onChange={onOptimizeChange}
             onClose={() => setOptOpen(false)}
             isOpen={optOpen}
+            labels={optimizeLabels}
           />
         </div>
-        <button className="search-bar__orb" onClick={handleSearch} disabled={loading} title="搜索">
+        <button className="search-bar__orb" onClick={handleSearch} disabled={loading} title={t('searchBar.search')}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.35-4.35" />
@@ -599,15 +635,15 @@ export default function SearchBar({
           >
         <div className="advanced-search__row">
           <div className="advanced-search__field">
-            <label>是否中转</label>
+            <label>{t('searchBar.transfer')}</label>
             <div
               className="advanced-search__trigger"
               ref={transferPickerRef}
               onClick={() => setTransferPickerOpen(!transferPickerOpen)}
             >
-              <span className="active">{TRANSFER_OPTIONS.find((o) => o.value === advanced.transfer)?.label}</span>
+              <span className="active">{transferOptions.find((o) => o.value === advanced.transfer)?.label}</span>
               <SelectPicker
-                options={TRANSFER_OPTIONS}
+                options={transferOptions}
                 value={advanced.transfer}
                 onChange={(val) => updateAdvanced('transfer', val)}
                 onClose={() => setTransferPickerOpen(false)}
@@ -616,7 +652,7 @@ export default function SearchBar({
             </div>
           </div>
           <div className={`advanced-search__field ${advanced.transfer === 'no' ? 'hidden' : ''}`}>
-            <label>中转地偏好</label>
+            <label>{t('searchBar.transferCities')}</label>
             <div
               className="advanced-search__trigger"
               ref={transferRef}
@@ -631,19 +667,22 @@ export default function SearchBar({
                 onChange={(val) => updateAdvanced('transferCities', val)}
                 onClose={() => setTransferOpen(false)}
                 isOpen={transferOpen}
+                cityGroups={cityGroups}
+                confirmLabel={t('searchBar.confirm')}
+                lang={lang}
               />
             </div>
           </div>
           <div className={`advanced-search__field ${advanced.transfer === 'no' ? 'hidden' : ''}`}>
-            <label>中转停留时间</label>
+            <label>{t('searchBar.transferTime')}</label>
             <div
               className="advanced-search__trigger"
               ref={transferTimePickerRef}
               onClick={() => setTransferTimePickerOpen(!transferTimePickerOpen)}
             >
-              <span className="active">{TRANSFER_TIME_OPTIONS.find((o) => o.value === advanced.transferTime)?.label}</span>
+              <span className="active">{transferTimeOptions.find((o) => o.value === advanced.transferTime)?.label}</span>
               <SelectPicker
-                options={TRANSFER_TIME_OPTIONS}
+                options={transferTimeOptions}
                 value={advanced.transferTime}
                 onChange={(val) => updateAdvanced('transferTime', val)}
                 onClose={() => setTransferTimePickerOpen(false)}
@@ -652,18 +691,18 @@ export default function SearchBar({
             </div>
           </div>
           <div className={`advanced-search__field ${advanced.transfer === 'no' ? 'hidden' : ''}`}>
-            <label>中转次数区间</label>
+            <label>{t('searchBar.transferCount')}</label>
             <div className="advanced-search__price">
               <input
                 type="number"
-                placeholder="最小"
+                placeholder={t('searchBar.min')}
                 value={advanced.transferCountMin}
                 onChange={(e) => updateAdvanced('transferCountMin', e.target.value)}
               />
               <span>—</span>
               <input
                 type="number"
-                placeholder="最大"
+                placeholder={t('searchBar.max')}
                 value={advanced.transferCountMax}
                 onChange={(e) => updateAdvanced('transferCountMax', e.target.value)}
               />
@@ -672,33 +711,33 @@ export default function SearchBar({
         </div>
         <div className="advanced-search__row">
           <div className="advanced-search__field">
-            <label>偏好价格区间</label>
+            <label>{t('searchBar.priceRange')}</label>
             <div className="advanced-search__price">
               <input
                 type="number"
-                placeholder="最低"
+                placeholder={t('searchBar.priceMin')}
                 value={advanced.priceMin}
                 onChange={(e) => updateAdvanced('priceMin', e.target.value)}
               />
               <span>—</span>
               <input
                 type="number"
-                placeholder="最高"
+                placeholder={t('searchBar.priceMax')}
                 value={advanced.priceMax}
                 onChange={(e) => updateAdvanced('priceMax', e.target.value)}
               />
             </div>
           </div>
           <div className="advanced-search__field">
-            <label>偏好交通工具</label>
+            <label>{t('searchBar.transportType')}</label>
             <div className="advanced-search__transport">
               <label>
                 <input type="checkbox" checked={advanced.transportTypes.includes('flight')} onChange={() => toggleTransport('flight')} />
-                航班
+                {t('searchBar.flight')}
               </label>
               <label>
                 <input type="checkbox" checked={advanced.transportTypes.includes('train')} onChange={() => toggleTransport('train')} />
-                火车
+                {t('searchBar.train')}
               </label>
             </div>
           </div>
@@ -708,7 +747,7 @@ export default function SearchBar({
     </AnimatePresence>
 
       <div className="advanced-search-toggle" ref={toggleRef} onClick={() => setDrawerOpen(!drawerOpen)}>
-        <span>高级搜索</span>
+        <span>{t('searchBar.advanced')}</span>
         <motion.svg
           className="advanced-search__arrow"
           animate={{ rotate: drawerOpen ? 180 : 0 }}

@@ -20,6 +20,7 @@ class StationRecord:
     name: str
     city_code: str
     station_type: str
+    name_en: str = ""
 
 
 @dataclass(frozen=True)

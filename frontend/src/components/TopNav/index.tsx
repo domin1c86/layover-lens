@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useTheme } from '../../context/ThemeContext';
+import { useLocale } from '../../context/LocaleContext';
 import './TopNav.css';
 
 interface TopNavProps {
@@ -11,14 +12,15 @@ interface TopNavProps {
   onCompactClick?: () => void;
 }
 
-const TABS = [
-  { key: 'search' as const, label: '搜索路线' },
-  { key: 'favorites' as const, label: '收藏行程' },
-  { key: 'ai' as const, label: 'AI搜索' },
-];
-
 export default function TopNav({ activeTab, onTabChange, isCompact = false, compactLabel = '', onCompactClick }: TopNavProps) {
   const { isDark, toggleTheme } = useTheme();
+  const { lang, setLang, t } = useLocale();
+
+  const TABS = [
+    { key: 'search' as const, label: t('topNav.search') },
+    { key: 'favorites' as const, label: t('topNav.favorites') },
+    { key: 'ai' as const, label: t('topNav.aiSearch') },
+  ];
   const [langOpen, setLangOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [hoveredIndicator, setHoveredIndicator] = useState<string | null>(null);
@@ -92,7 +94,7 @@ export default function TopNav({ activeTab, onTabChange, isCompact = false, comp
         </div>
 
         <div className="top-nav__tools">
-          <button className="icon-btn" title="切换主题" onClick={toggleTheme}>
+          <button className="icon-btn" title={t('topNav.theme')} onClick={toggleTheme}>
             {isDark ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
@@ -106,7 +108,7 @@ export default function TopNav({ activeTab, onTabChange, isCompact = false, comp
           </button>
 
           <div className="dropdown" ref={langRef}>
-            <button className="icon-btn" title="语言" onClick={() => toggleDropdown(setLangOpen, setAccountOpen)}>
+            <button className="icon-btn" title={t('topNav.lang')} onClick={() => toggleDropdown(setLangOpen, setAccountOpen)}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M2 12h20" />
@@ -116,8 +118,8 @@ export default function TopNav({ activeTab, onTabChange, isCompact = false, comp
             <div className={`dropdown-menu ${langOpen ? 'opening' : 'hidden'}`}>
               <div className="dropdown-surface" />
               <div className="dropdown-content">
-                <div className="dropdown-item active">中文</div>
-                <div className="dropdown-item">English</div>
+                <div className={`dropdown-item ${lang === 'zh' ? 'active' : ''}`} onClick={() => { setLang('zh'); setLangOpen(false); }}>中文</div>
+                <div className={`dropdown-item ${lang === 'en' ? 'active' : ''}`} onClick={() => { setLang('en'); setLangOpen(false); }}>English</div>
               </div>
             </div>
           </div>
@@ -125,7 +127,7 @@ export default function TopNav({ activeTab, onTabChange, isCompact = false, comp
           <div className="dropdown" ref={accountRef}>
             <button
               className="icon-btn"
-              title="账户"
+              title={t('topNav.account')}
               onClick={() => toggleDropdown(setAccountOpen, setLangOpen)}
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 8px 0 12px', width: 'auto' }}
             >
@@ -141,9 +143,9 @@ export default function TopNav({ activeTab, onTabChange, isCompact = false, comp
             <div className={`dropdown-menu ${accountOpen ? 'opening' : 'hidden'}`}>
               <div className="dropdown-surface" />
               <div className="dropdown-content">
-                <div className="dropdown-item">设置</div>
-                <div className="dropdown-item">登录</div>
-                <div className="dropdown-item">注册</div>
+                <div className="dropdown-item">{t('topNav.settings')}</div>
+                <div className="dropdown-item">{t('topNav.login')}</div>
+                <div className="dropdown-item">{t('topNav.register')}</div>
               </div>
             </div>
           </div>
