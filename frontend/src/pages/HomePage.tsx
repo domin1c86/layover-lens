@@ -14,7 +14,11 @@ import './HomePage.css';
 const THREE_LINES = 24; // 一行高度，作为展开/缩小的阈值
 const COMPACT_TRANSITION_MS = 550;
 
-export default function HomePage() {
+interface HomePageProps {
+  onOpenSettings?: () => void
+}
+
+export default function HomePage({ onOpenSettings }: HomePageProps) {
   const { isDark } = useTheme();
   const { lang, t } = useLocale();
   const [activeTab, setActiveTab] = useState<'search' | 'ai' | 'favorites'>('search');
@@ -241,6 +245,7 @@ export default function HomePage() {
           isCompact={isCompact}
           compactLabel={compactLabel}
           onCompactClick={handleCompactClick}
+          onOpenSettings={onOpenSettings}
         />
 
         <div className={`home-page__search-bar ${isCompact ? 'compact' : ''} ${isDark ? 'dark' : ''}`}>

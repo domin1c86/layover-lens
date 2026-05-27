@@ -10,9 +10,10 @@ interface TopNavProps {
   isCompact?: boolean;
   compactLabel?: string;
   onCompactClick?: () => void;
+  onOpenSettings?: () => void;
 }
 
-export default function TopNav({ activeTab, onTabChange, isCompact = false, compactLabel = '', onCompactClick }: TopNavProps) {
+export default function TopNav({ activeTab, onTabChange, isCompact = false, compactLabel = '', onCompactClick, onOpenSettings }: TopNavProps) {
   const { isDark, toggleTheme } = useTheme();
   const { lang, setLang, t } = useLocale();
 
@@ -143,7 +144,7 @@ export default function TopNav({ activeTab, onTabChange, isCompact = false, comp
             <div className={`dropdown-menu ${accountOpen ? 'opening' : 'hidden'}`}>
               <div className="dropdown-surface" />
               <div className="dropdown-content">
-                <div className="dropdown-item">{t('topNav.settings')}</div>
+                <div className="dropdown-item" onClick={() => { onOpenSettings?.(); setAccountOpen(false); }}>{t('topNav.settings')}</div>
                 <div className="dropdown-item">{t('topNav.login')}</div>
                 <div className="dropdown-item">{t('topNav.register')}</div>
               </div>

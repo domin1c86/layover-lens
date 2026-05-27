@@ -1,0 +1,204 @@
+/* Overlay */
+.settings-modal__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+/* Dialog */
+.settings-modal__dialog {
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: rgba(0, 0, 0, 0.02) 0 0 0 1px, rgba(0, 0, 0, 0.04) 0 2px 6px, rgba(0, 0, 0, 0.1) 0 4px 8px;
+  width: 100%;
+  max-width: 800px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header */
+.settings-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #dddddd;
+}
+
+.settings-modal__title {
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.20;
+  letter-spacing: -0.18px;
+  color: #222222;
+  margin: 0;
+}
+
+.settings-modal__close {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #222222;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+}
+
+.settings-modal__close:hover {
+  background: #f2f2f2;
+}
+
+/* Body */
+.settings-modal__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Desktop Nav */
+.settings-nav__desktop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 200px;
+  padding: 24px;
+  border-right: 1px solid #dddddd;
+  flex-shrink: 0;
+}
+
+.settings-nav__item {
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.43;
+  color: #6a6a6a;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.settings-nav__item:hover {
+  background: #f7f7f7;
+  color: #222222;
+}
+
+.settings-nav__item.active {
+  color: #222222;
+  font-weight: 500;
+  border-left: 2px solid #222222;
+  padding-left: 10px;
+  background: #f7f7f7;
+}
+
+/* Mobile Nav (hidden on desktop) */
+.settings-nav__mobile {
+  display: none;
+}
+
+/* Content */
+.settings-modal__content {
+  flex: 1;
+  padding: 32px;
+  overflow-y: auto;
+}
+
+/* Panel placeholder styles */
+.settings-panel__title {
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.20;
+  letter-spacing: -0.18px;
+  color: #222222;
+  margin: 0 0 12px 0;
+}
+
+.settings-panel__placeholder {
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.43;
+  color: #6a6a6a;
+  margin: 0;
+}
+
+/* Mobile layout */
+@media (max-width: 743px) {
+  .settings-modal__overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .settings-modal__dialog {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 0;
+    height: 100%;
+  }
+
+  .settings-modal__body {
+    flex-direction: column;
+  }
+
+  .settings-nav__desktop {
+    display: none;
+  }
+
+  .settings-nav__mobile {
+    display: flex;
+    gap: 24px;
+    padding: 0 16px;
+    height: 56px;
+    align-items: center;
+    border-bottom: 1px solid #dddddd;
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex-shrink: 0;
+  }
+
+  .settings-nav__mobile::-webkit-scrollbar {
+    display: none;
+  }
+
+  .settings-nav__mobile-item {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.43;
+    color: #6a6a6a;
+    padding: 4px 0;
+    white-space: nowrap;
+    flex-shrink: 0;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .settings-nav__mobile-item.active {
+    color: #222222;
+    font-weight: 500;
+    border-bottom-color: #222222;
+  }
+
+  .settings-modal__content {
+    padding: 24px;
+  }
+}
