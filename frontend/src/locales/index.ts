@@ -129,6 +129,17 @@ export const dict = {
       cookie: 'Cookie 设置',
       copyright: '© 2026 中转助手 Layover Lens, Inc.',
     },
+    settings: {
+      title: '设置',
+      menu: {
+        account: '账户设置',
+        appearance: '外观设置',
+        aiHistory: 'AI历史保留时间',
+        import: '导入平台',
+        devices: '登录设备管理',
+      },
+      placeholder: '内容即将上线',
+    },
   },
   en: {
     topNav: {
@@ -259,6 +270,17 @@ export const dict = {
       privacy: 'Privacy Policy',
       cookie: 'Cookie Settings',
       copyright: '© 2026 Layover Lens, Inc.',
+    },
+    settings: {
+      title: 'Settings',
+      menu: {
+        account: 'Account Settings',
+        appearance: 'Appearance',
+        aiHistory: 'AI History Retention',
+        import: 'Import Platforms',
+        devices: 'Device Management',
+      },
+      placeholder: 'Content coming soon',
     },
   },
 }
