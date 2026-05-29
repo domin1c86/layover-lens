@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { RoutePlan, Leg } from '../../types';
 import { useLocale } from '../../context/LocaleContext';
+import { Icon, getEmoji } from '../../icons';
 import './ResultList.css';
 
 interface ResultListProps {
@@ -27,7 +28,7 @@ function formatTime(timeStr: string): string {
 }
 
 function getTransportIcon(type: string): string {
-  return type === 'flight' ? '✈' : '🚄';
+  return type === 'flight' ? getEmoji('transport.flight') : getEmoji('transport.train');
 }
 
 function RouteCard({ route, index, lang, t }: { route: RoutePlan; index: number; lang: 'zh' | 'en'; t: (key: string, params?: Record<string, string>) => string }) {
@@ -45,7 +46,7 @@ function RouteCard({ route, index, lang, t }: { route: RoutePlan; index: number;
         <div className="route-card__timeline">
           <div className="route-card__time">{formatTime(firstLeg.departure_time)}</div>
           <div className="route-card__line" />
-          <div className="route-card__node">⇄</div>
+          <div className="route-card__node"><Icon name="status.transferArrow" /></div>
           <div className="route-card__line" />
           <div className="route-card__time">{formatTime(lastLeg.arrival_time)}</div>
         </div>
@@ -81,7 +82,7 @@ function LegInfo({ leg, index, totalLegs, lang, t }: { leg: Leg; index: number; 
       </div>
       {index < totalLegs - 1 && (
         <div className="route-card__transfer">
-          🔄 {lang === 'en' ? `${t('resultList.transferAt')}${toCity}` : `${toCity}${t('resultList.transferAt')}`}
+          {getEmoji('status.transferCycle')} {lang === 'en' ? `${t('resultList.transferAt')}${toCity}` : `${toCity}${t('resultList.transferAt')}`}
         </div>
       )}
     </>
@@ -119,7 +120,7 @@ function TimelineDetail({ legs, lang, t }: { legs: Leg[]; lang: 'zh' | 'en'; t: 
             </div>
             {i < legs.length - 1 && (
               <div className="timeline-detail__transfer">
-                🔄 {lang === 'en' ? `${t('resultList.transferAt')}${toCity} → ${nextFromStation}` : `${toCity}${t('resultList.transferAt')} · 换乘至${nextFromStation}`}
+                {getEmoji('status.transferCycle')} {lang === 'en' ? `${t('resultList.transferAt')}${toCity} → ${nextFromStation}` : `${toCity}${t('resultList.transferAt')} · 换乘至${nextFromStation}`}
               </div>
             )}
           </div>
@@ -144,7 +145,7 @@ export default function ResultList({ routes, loading, error, searched, header }:
   if (error) {
     return (
       <div className="empty-state">
-        <div className="empty-state__icon">⚠️</div>
+        <div className="empty-state__icon"><Icon name="status.warning" /></div>
         <div className="empty-state__title">{error}</div>
       </div>
     );
@@ -155,7 +156,7 @@ export default function ResultList({ routes, loading, error, searched, header }:
   if (routes.length === 0) {
     return (
       <div className="empty-state">
-        <div className="empty-state__icon">🔍</div>
+        <div className="empty-state__icon"><Icon name="status.searchEmpty" /></div>
         <div className="empty-state__title">{t('resultList.noRoutesFound')}</div>
         <div className="empty-state__subtitle">{t('resultList.tryAdjust')}</div>
       </div>

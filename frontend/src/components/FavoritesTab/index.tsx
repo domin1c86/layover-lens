@@ -2,10 +2,17 @@ import { useState, useEffect } from 'react';
 import type { RoutePlan } from '../../types';
 import ResultList from '../SearchTab/ResultList';
 import { useLocale } from '../../context/LocaleContext';
+import { Icon } from '../../icons';
 import './FavoritesTab.css';
 
 const STORAGE_KEY = 'layover-lens-favorites';
 
+// ─────────────────────────────────────────────────────────────────────
+// DEMO DATA — SEED_FAVORITES is sample display content only.
+// It is used to pre-populate the favorites tab so the UI isn't empty
+// on first visit.  Remove or replace with real user data when a
+// backend persistence layer is added.
+// ─────────────────────────────────────────────────────────────────────
 const SEED_FAVORITES: RoutePlan[] = [
   {
     id: 'fav-001',
@@ -617,10 +624,7 @@ function loadFavorites(): RoutePlan[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED_FAVORITES));
-      return SEED_FAVORITES;
-    }
+    if (!Array.isArray(parsed)) return [];
     return parsed;
   } catch {
     return [];
@@ -673,7 +677,7 @@ export default function FavoritesTab() {
           />
         ) : (
           <div className="empty-state">
-            <div className="empty-state__icon">❤️</div>
+            <div className="empty-state__icon"><Icon name="status.heartEmpty" /></div>
             <div className="empty-state__title">{t('favorites.emptyTitle')}</div>
             <div className="empty-state__subtitle">{t('favorites.emptySubtitle')}</div>
           </div>

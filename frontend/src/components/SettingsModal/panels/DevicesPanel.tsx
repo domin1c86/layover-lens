@@ -1,11 +1,23 @@
+import { useAuth } from '../../../context/AuthContext'
 import { useLocale } from '../../../context/LocaleContext'
 
 export default function DevicesPanel() {
   const { t } = useLocale()
+  const { isLoggedIn } = useAuth()
+
   return (
     <div className="settings-panel">
-      <h2 className="settings-panel__title">{t('settings.menu.devices')}</h2>
-      <p className="settings-panel__placeholder">{t('settings.placeholder')}</p>
+      <div className="settings-panel__section">
+        {isLoggedIn ? (
+          <p className="settings-panel__hint" style={{ textAlign: 'center', padding: '24px 0' }}>
+            {t('settings.devices.noDevices')}
+          </p>
+        ) : (
+          <p className="settings-panel__hint" style={{ textAlign: 'center', padding: '24px 0' }}>
+            {t('settings.devices.noDevices')}
+          </p>
+        )}
+      </div>
     </div>
   )
 }

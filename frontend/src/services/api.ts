@@ -58,6 +58,14 @@ export const aiSearchApi = {
     );
     return response.data;
   },
+
+  summarize: async (message: string, language?: string): Promise<{ title: string }> => {
+    const response = await apiClient.post<{ title: string }>('/search/ai/summarize', {
+      message,
+      language: language || 'zh',
+    });
+    return response.data;
+  },
 };
 
 export default apiClient;

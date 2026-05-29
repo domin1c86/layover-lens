@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { City, OptimizationTarget, TransportType } from '../../types';
 import { useLocale } from '../../context/LocaleContext';
+import { Icon } from '../../icons';
 import './SearchBar.css';
 
 interface SearchBarProps {
@@ -616,10 +617,7 @@ export default function SearchBar({
           />
         </div>
         <button className="search-bar__orb" onClick={handleSearch} disabled={loading} title={t('searchBar.search')}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
+          <Icon name="actions.search" size={20} />
         </button>
       </div>
 

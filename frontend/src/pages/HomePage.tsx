@@ -16,9 +16,11 @@ const COMPACT_TRANSITION_MS = 550;
 
 interface HomePageProps {
   onOpenSettings?: () => void
+  onOpenLogin?: () => void
+  onOpenRegister?: () => void
 }
 
-export default function HomePage({ onOpenSettings }: HomePageProps) {
+export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }: HomePageProps) {
   const { isDark } = useTheme();
   const { lang, t } = useLocale();
   const [activeTab, setActiveTab] = useState<'search' | 'ai' | 'favorites'>('search');
@@ -246,6 +248,8 @@ export default function HomePage({ onOpenSettings }: HomePageProps) {
           compactLabel={compactLabel}
           onCompactClick={handleCompactClick}
           onOpenSettings={onOpenSettings}
+          onOpenLogin={onOpenLogin}
+          onOpenRegister={onOpenRegister}
         />
 
         <div className={`home-page__search-bar ${isCompact ? 'compact' : ''} ${isDark ? 'dark' : ''}`}>

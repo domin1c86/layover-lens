@@ -1,0 +1,154 @@
+{
+  "nav": {
+    "logo": {
+      "type": "emoji",
+      "value": "✈",
+      "label": "App logo — airplane"
+    },
+    "hamburger": {
+      "type": "svg",
+      "viewBox": "0 0 24 24",
+      "paths": ["M3 12h18", "M3 6h18", "M3 18h18"],
+      "label": "Account menu — hamburger icon"
+    },
+    "globe": {
+      "type": "svg",
+      "viewBox": "0 0 24 24",
+      "paths": ["M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z", "M2 12h20"],
+      "circle": { "cx": 12, "cy": 12, "r": 10 },
+      "label": "Language selector — globe icon"
+    }
+  },
+  "theme": {
+    "sun": {
+      "type": "svg",
+      "viewBox": "0 0 24 24",
+      "paths": ["M12 1v2", "M12 21v2", "M4.22 4.22l1.42 1.42", "M18.36 18.36l1.42 1.42", "M1 12h2", "M21 12h2", "M4.22 19.78l1.42-1.42", "M18.36 5.64l1.42-1.42"],
+      "circle": { "cx": 12, "cy": 12, "r": 5 },
+      "label": "Light theme — sun icon"
+    },
+    "moon": {
+      "type": "svg",
+      "viewBox": "0 0 24 24",
+      "paths": ["M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"],
+      "label": "Dark theme — moon icon"
+    }
+  },
+  "actions": {
+    "search": {
+      "type": "svg",
+      "viewBox": "0 0 24 24",
+      "paths": ["m21 21-4.35-4.35"],
+      "circle": { "cx": 11, "cy": 11, "r": 8 },
+      "label": "Search button"
+    },
+    "close": {
+      "type": "svg",
+      "viewBox": "0 0 24 24",
+      "paths": ["M18 6L6 18", "M6 6l12 12"],
+      "label": "Close / X button"
+    },
+    "closeEmoji": {
+      "type": "emoji",
+      "value": "×",
+      "label": "Close button — text × symbol"
+    },
+    "send": {
+      "type": "emoji",
+      "value": "➤",
+      "label": "Send message button"
+    },
+    "add": {
+      "type": "emoji",
+      "value": "+",
+      "label": "New / add button"
+    },
+    "edit": {
+      "type": "emoji",
+      "value": "✎",
+      "label": "Edit / rename button"
+    },
+    "check": {
+      "type": "emoji",
+      "value": "✓",
+      "label": "Confirm / save button"
+    },
+    "delete": {
+      "type": "emoji",
+      "value": "🗑️",
+      "label": "Delete button"
+    },
+    "deleteX": {
+      "type": "emoji",
+      "value": "×",
+      "label": "Delete action — × trigger"
+    },
+    "eyeOn": {
+      "type": "svg",
+      "viewBox": "0 0 24 24",
+      "paths": ["M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"],
+      "circle": { "cx": 12, "cy": 12, "r": 3 },
+      "label": "Show password — eye icon"
+    },
+    "eyeOff": {
+      "type": "svg",
+      "viewBox": "0 0 24 24",
+      "paths": [
+        "M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94",
+        "M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19",
+        "M14.12 14.12a3 3 0 1 1-4.24-4.24",
+        "M1 1l22 22"
+      ],
+      "label": "Hide password — eye-off icon"
+    }
+  },
+  "transport": {
+    "flight": {
+      "type": "emoji",
+      "value": "✈",
+      "label": "Flight transport type"
+    },
+    "train": {
+      "type": "emoji",
+      "value": "🚄",
+      "label": "Train transport type"
+    }
+  },
+  "status": {
+    "warning": {
+      "type": "emoji",
+      "value": "⚠️",
+      "label": "Warning / error indicator"
+    },
+    "searchEmpty": {
+      "type": "emoji",
+      "value": "🔍",
+      "label": "No results found placeholder"
+    },
+    "mapEmpty": {
+      "type": "emoji",
+      "value": "🗺️",
+      "label": "Empty search state — map icon"
+    },
+    "heartEmpty": {
+      "type": "emoji",
+      "value": "❤️",
+      "label": "Empty favorites state"
+    },
+    "userPlaceholder": {
+      "type": "emoji",
+      "value": "👤",
+      "label": "User avatar placeholder (not logged in)"
+    },
+    "transferArrow": {
+      "type": "emoji",
+      "value": "⇄",
+      "label": "Transfer direction indicator"
+    },
+    "transferCycle": {
+      "type": "emoji",
+      "value": "🔄",
+      "label": "Transfer count prefix"
+    }
+  }
+}

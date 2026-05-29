@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { SearchResponse } from '../../types';
 import { useLocale } from '../../context/LocaleContext';
+import { Icon } from '../../icons';
 import './AiSearchTab.css';
 
 export interface AiChatMessage {
@@ -106,7 +107,7 @@ export default function AiChatArea({ messages, onSend, loading, status, onConfir
             disabled={loading}
           />
           <button className="ai-search__send" onClick={handleSend} disabled={loading}>
-            ➤
+            <Icon name="actions.send" />
           </button>
         </div>
       </div>

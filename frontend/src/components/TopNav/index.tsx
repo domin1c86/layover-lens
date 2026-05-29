@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useTheme } from '../../context/ThemeContext';
 import { useLocale } from '../../context/LocaleContext';
+import { useAuth } from '../../context/AuthContext';
+import { Icon } from '../../icons';
 import './TopNav.css';
 
 interface TopNavProps {
@@ -11,11 +13,14 @@ interface TopNavProps {
   compactLabel?: string;
   onCompactClick?: () => void;
   onOpenSettings?: () => void;
+  onOpenLogin?: () => void;
+  onOpenRegister?: () => void;
 }
 
-export default function TopNav({ activeTab, onTabChange, isCompact = false, compactLabel = '', onCompactClick, onOpenSettings }: TopNavProps) {
+export default function TopNav({ activeTab, onTabChange, isCompact = false, compactLabel = '', onCompactClick, onOpenSettings, onOpenLogin, onOpenRegister }: TopNavProps) {
   const { isDark, toggleTheme } = useTheme();
   const { lang, setLang, t } = useLocale();
+  const { isLoggedIn, user, logout } = useAuth();
 
   const TABS = [
     { key: 'search' as const, label: t('topNav.search') },
@@ -49,7 +54,7 @@ export default function TopNav({ activeTab, onTabChange, isCompact = false, comp
     <nav className={`top-nav ${isCompact ? 'compact' : ''} ${isDark ? 'dark' : ''}`}>
       <div className="container top-nav__inner">
         <a href="#" className="top-nav__logo">
-          <div className="top-nav__logo-icon">✈</div>
+          <div className="top-nav__logo-icon"><Icon name="nav.logo" /></div>
           <span>中转助手</span>
         </a>
 
@@ -96,25 +101,12 @@ export default function TopNav({ activeTab, onTabChange, isCompact = false, comp
 
         <div className="top-nav__tools">
           <button className="icon-btn" title={t('topNav.theme')} onClick={toggleTheme}>
-            {isDark ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="5" />
-                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-              </svg>
-            )}
+            <Icon name={isDark ? 'theme.moon' : 'theme.sun'} size={16} />
           </button>
 
           <div className="dropdown" ref={langRef}>
             <button className="icon-btn" title={t('topNav.lang')} onClick={() => toggleDropdown(setLangOpen, setAccountOpen)}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M2 12h20" />
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-              </svg>
+              <Icon name="nav.globe" size={16} />
             </button>
             <div className={`dropdown-menu ${langOpen ? 'opening' : 'hidden'}`}>
               <div className="dropdown-surface" />
@@ -132,21 +124,32 @@ export default function TopNav({ activeTab, onTabChange, isCompact = false, comp
               onClick={() => toggleDropdown(setAccountOpen, setLangOpen)}
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 8px 0 12px', width: 'auto' }}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 12h18" />
-                <path d="M3 6h18" />
-                <path d="M3 18h18" />
-              </svg>
-              <div style={{ width: '28px', height: '28px', background: 'var(--hairline)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>
-                👤
+              <Icon name="nav.hamburger" size={16} />
+              <div
+                style={{
+                  width: '28px', height: '28px',
+                  background: isLoggedIn ? 'var(--primary)' : 'var(--hairline)',
+                  color: isLoggedIn ? '#fff' : 'inherit',
+                  borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '12px', fontWeight: 600,
+                }}
+              >
+                {isLoggedIn ? (user?.username || user?.email || '?')[0].toUpperCase() : <Icon name="status.userPlaceholder" size={14} />}
               </div>
             </button>
             <div className={`dropdown-menu ${accountOpen ? 'opening' : 'hidden'}`}>
               <div className="dropdown-surface" />
               <div className="dropdown-content">
                 <div className="dropdown-item" onClick={() => { onOpenSettings?.(); setAccountOpen(false); }}>{t('topNav.settings')}</div>
-                <div className="dropdown-item">{t('topNav.login')}</div>
-                <div className="dropdown-item">{t('topNav.register')}</div>
+                {isLoggedIn ? (
+                  <div className="dropdown-item" onClick={() => { logout(); setAccountOpen(false); }}>{t('topNav.logout')}</div>
+                ) : (
+                  <>
+                    <div className="dropdown-item" onClick={() => { onOpenLogin?.(); setAccountOpen(false); }}>{t('topNav.login')}</div>
+                    <div className="dropdown-item" onClick={() => { onOpenRegister?.(); setAccountOpen(false); }}>{t('topNav.register')}</div>
+                  </>
+                )}
               </div>
             </div>
           </div>

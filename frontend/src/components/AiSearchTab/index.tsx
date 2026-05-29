@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import type { SearchRequest, SearchResponse } from '../../types';
 import { aiSearchApi } from '../../services/api';
 import { useLocale } from '../../context/LocaleContext';
+import { useAuth } from '../../context/AuthContext';
+import { Icon } from '../../icons';
 import AiChatArea, { type AiChatMessage } from './AiChatArea';
 import './AiSearchTab.css';
 
@@ -25,7 +27,7 @@ interface AiSearchTabProps {
 
 let nextSessionId = 1;
 
-function createEmptySession(): Session {
+function createEmptySession(title: string = ''): Session {
   return {
     id: `local-${nextSessionId++}`,
     sessionId: null,
@@ -33,13 +35,14 @@ function createEmptySession(): Session {
     status: 'idle',
     finalRequest: null,
     searchResponse: null,
-    title: '',
+    title,
   };
 }
 
 export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabProps) {
   const { lang, t } = useLocale();
-  const [sessions, setSessions] = useState<Session[]>(() => [createEmptySession()]);
+  const { isLoggedIn } = useAuth();
+  const [sessions, setSessions] = useState<Session[]>(() => [createEmptySession(t('aiChat.newChat'))]);
   const [activeSessionId, setActiveSessionId] = useState<string>(sessions[0].id);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -147,13 +150,20 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
 
     const userMsg: AiChatMessage = { role: 'user', content: text };
     const currentMessages = [...activeSession.messages, userMsg];
+    const isFirstMessage = activeSession.messages.length === 0;
 
-    const newTitle =
-      activeSession.messages.length === 0 && activeSession.title === t('aiChat.newChat')
-        ? text.slice(0, 10) + (text.length > 10 ? '...' : '')
-        : activeSession.title;
+    updateActiveSession({ messages: currentMessages });
 
-    updateActiveSession({ messages: currentMessages, title: newTitle });
+    // ── Login gate: block API calls when not logged in ──────────
+    if (!isLoggedIn) {
+      const loginRequiredMsg: AiChatMessage = {
+        role: 'assistant',
+        content: t('aiChat.loginRequired'),
+      };
+      updateActiveSession({ messages: [...currentMessages, loginRequiredMsg] });
+      setLoading(false);
+      return;
+    }
 
     try {
       let response;
@@ -174,6 +184,20 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
         finalRequest: response.final_request,
         searchResponse: response.search_response,
       });
+
+      // ── Auto-rename after first user message ──────────────────
+      if (isFirstMessage) {
+        try {
+          const result = await aiSearchApi.summarize(text, lang);
+          if (result.title) {
+            updateActiveSession({ title: result.title });
+          }
+        } catch {
+          // Summarize is best-effort — fall back to truncated text
+          const fallback = text.slice(0, 15) + (text.length > 15 ? '…' : '');
+          updateActiveSession({ title: fallback });
+        }
+      }
     } catch (err: any) {
       const status = err?.response?.status;
       const msg = status === 503 ? t('aiChat.serviceUnavailable') : t('aiChat.requestFailed');
@@ -184,7 +208,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
     } finally {
       setLoading(false);
     }
-  }, [activeSession, updateActiveSession]);
+  }, [activeSession, updateActiveSession, isLoggedIn, lang, t]);
 
   const handleConfirm = useCallback(async () => {
     if (!activeSession.sessionId) return;
@@ -234,7 +258,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
       return;
     }
 
-    const newSession = createEmptySession();
+    const newSession = createEmptySession(t('aiChat.newChat'));
     setSessions((prev) => [newSession, ...prev]);
     setActiveSessionId(newSession.id);
     setError('');
@@ -243,7 +267,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
   const deleteSession = (sessionId: string) => {
     const filtered = sessions.filter((s) => s.id !== sessionId);
     if (filtered.length === 0) {
-      const newSession = createEmptySession();
+      const newSession = createEmptySession(t('aiChat.newChat'));
       setSessions([newSession]);
       setActiveSessionId(newSession.id);
     } else {
@@ -259,7 +283,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
     <div className="ai-search">
       <div className="ai-search__sidebar">
         <button className="ai-search__new-chat" onClick={newChat}>
-          <span className="ai-search__new-chat-icon">+</span>
+          <span className="ai-search__new-chat-icon"><Icon name="actions.add" /></span>
           <span className="ai-search__new-chat-text">{t('aiChat.newChat')}</span>
         </button>
         <div className="ai-search__history">
@@ -315,7 +339,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
                         startEdit(session);
                       }}
                     >
-                      ✎
+                      <Icon name="actions.edit" />
                     </span>
                   )}
                   {!isEditing && !isConfirmingDelete && !isDeleting && (
@@ -323,7 +347,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
                       className="ai-search__history-delete"
                       onClick={(e) => handleFirstDeleteClick(e, session.id)}
                     >
-                      ×
+                      <Icon name="actions.deleteX" />
                     </span>
                   )}
 
@@ -335,7 +359,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
                         saveEdit();
                       }}
                     >
-                      ✓
+                      <Icon name="actions.check" />
                     </span>
                   )}
                 </motion.div>
@@ -358,7 +382,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
                         animate={isDeleting ? { x: [0, -3, 3, -3, 3, 0] } : {}}
                         transition={{ duration: 0.3 }}
                       >
-                        🗑️
+                        <Icon name="actions.delete" />
                       </motion.span>
                     </motion.div>
                   )}

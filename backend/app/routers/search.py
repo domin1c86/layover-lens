@@ -7,9 +7,12 @@ from app.schemas import (
     AISearchSessionTurnRequest,
     SearchRequest,
     SearchResponse,
+    SummarizeRequest,
+    SummarizeResponse,
 )
 from app.services import SearchService, get_search_service
 from app.services.ai_agent import AIClientError
+from app.services.summarizer import summarize_message
 
 router = APIRouter()
 
@@ -73,3 +76,13 @@ def confirm_ai_search_session(
         return search_service.confirm_ai_session(session_id, confirmed=request.confirmed)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/search/ai/summarize", response_model=SummarizeResponse)
+def summarize_ai_message(request: SummarizeRequest) -> SummarizeResponse:
+    """Generate a short conversation title from a user's travel query.
+
+    Uses a lightweight rule-based algorithm (no LLM call).
+    """
+    title = summarize_message(request.message, language=request.language)
+    return SummarizeResponse(title=title)

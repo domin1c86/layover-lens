@@ -182,3 +182,12 @@ class AISearchResponse(BaseModel):
     ready_for_confirmation: bool
     search_executed: bool
     search_response: Optional[SearchResponse] = None
+
+
+class SummarizeRequest(BaseModel):
+    message: str
+    language: str = "zh"
+
+
+class SummarizeResponse(BaseModel):
+    title: str
