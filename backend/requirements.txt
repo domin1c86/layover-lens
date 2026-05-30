@@ -7,3 +7,4 @@ python-dotenv==1.0.0
 pytest==8.0.0
 httpx==0.26.0
 pybind11==2.11.1
+python-multipart==0.0.9

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Lightweight message summarizer for AI search conversation titles.
 
 Uses rule-based extraction (regex) — no LLM API call.

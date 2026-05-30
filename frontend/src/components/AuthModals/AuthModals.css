@@ -31,7 +31,7 @@
 }
 
 .auth-modal__title {
-  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-family: var(--font-family);
   font-size: 18px;
   font-weight: 600;
   line-height: 1.20;
@@ -73,7 +73,7 @@
 }
 
 .auth-modal__label {
-  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-family: var(--font-family);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.43;
@@ -111,7 +111,7 @@
 }
 
 .auth-modal__error {
-  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-family: var(--font-family);
   font-size: 13px;
   font-weight: 400;
   line-height: 1.33;
@@ -120,7 +120,7 @@
 }
 
 .auth-modal__success {
-  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-family: var(--font-family);
   font-size: 14px;
   font-weight: 500;
   line-height: 1.43;
@@ -142,7 +142,7 @@
   background: transparent;
   border: none;
   padding: 0;
-  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-family: var(--font-family);
   font-size: 13px;
   font-weight: 400;
   color: var(--primary);
@@ -157,7 +157,7 @@
 }
 
 .auth-modal__switch-text {
-  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-family: var(--font-family);
   font-size: 13px;
   font-weight: 400;
   color: #6a6a6a;

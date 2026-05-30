@@ -99,6 +99,12 @@ export const dict = {
       transfer: '少换乘',
       balanced: '综合推荐',
     },
+    platform: {
+      '12306': '铁路12306',
+      ctrip: '携程',
+      qunar: '去哪儿',
+      fliggy: '飞猪',
+    },
     resultList: {
       transferSuffix: '次换乘',
       expandDetails: '展开详情',
@@ -370,6 +376,12 @@ export const dict = {
       time: 'Fastest',
       transfer: 'Fewest Transfers',
       balanced: 'Balanced',
+    },
+    platform: {
+      '12306': 'Railway 12306',
+      ctrip: 'Ctrip',
+      qunar: 'Qunar',
+      fliggy: 'Fliggy',
     },
     resultList: {
       transferSuffix: ' transfers',

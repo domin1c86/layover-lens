@@ -82,6 +82,7 @@ function LegInfo({ leg, index, totalLegs, lang, t }: { leg: Leg; index: number; 
   const fromStation = lang === 'en' && leg.from_station_en ? leg.from_station_en : leg.from_station;
   const toStation = lang === 'en' && leg.to_station_en ? leg.to_station_en : leg.to_station;
   const toCity = lang === 'en' && leg.to_city_en ? leg.to_city_en : leg.to_city;
+  const platformLabel = leg.platform ? t(`platform.${leg.platform}`) : '';
 
   return (
     <>
@@ -89,6 +90,7 @@ function LegInfo({ leg, index, totalLegs, lang, t }: { leg: Leg; index: number; 
         <div className="route-card__leg-route">{fromStation} → {toStation}</div>
         <div className="route-card__leg-meta">
           {getTransportIcon(leg.transport_type)} {leg.flight_train_no} · {formatDuration(leg.duration_minutes, lang)}
+          {platformLabel && <span className="route-card__platform-tag">{platformLabel}</span>}
         </div>
       </div>
       {index < totalLegs - 1 && (
@@ -120,7 +122,7 @@ function TimelineDetail({ legs, lang, t }: { legs: Leg[]; lang: 'zh' | 'en'; t: 
             <div className="timeline-detail__segment">
               <div className="timeline-detail__segment-icon">{getTransportIcon(leg.transport_type)}</div>
               <div className="timeline-detail__segment-info">
-                <div className="timeline-detail__segment-title">{leg.company} {leg.flight_train_no}</div>
+                <div className="timeline-detail__segment-title">{leg.company} {leg.flight_train_no}{leg.platform && <span className="route-card__platform-tag">{t(`platform.${leg.platform}`)}</span>}</div>
                 <div className="timeline-detail__segment-meta">{formatDuration(leg.duration_minutes, lang)} · ¥{leg.price}</div>
               </div>
             </div>
