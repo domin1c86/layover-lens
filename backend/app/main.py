@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import cities, search
+from app.routers import auth, bookings, cities, search, user
 from app.services import get_search_service
 
 app = FastAPI(
@@ -21,6 +21,9 @@ app.add_middleware(
 
 app.include_router(search.router, prefix=settings.api_v1_prefix, tags=["search"])
 app.include_router(cities.router, prefix=settings.api_v1_prefix, tags=["cities"])
+app.include_router(auth.router, prefix=settings.api_v1_prefix, tags=["auth"])
+app.include_router(user.router, prefix=settings.api_v1_prefix, tags=["user"])
+app.include_router(bookings.router, prefix=settings.api_v1_prefix, tags=["bookings"])
 
 
 @app.get("/")

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -192,3 +192,161 @@ class SummarizeRequest(BaseModel):
 
 class SummarizeResponse(BaseModel):
     title: str
+
+
+class UserProfile(BaseModel):
+    id: str
+    username: str
+    email: str
+    nickname: Optional[str] = None
+    avatar_url: Optional[str] = None
+    created_at: datetime
+
+
+class AuthLoginRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=1, max_length=255)
+
+
+class AuthRegisterRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=80)
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=6, max_length=255)
+
+
+class AuthTokenResponse(BaseModel):
+    user: UserProfile
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+
+
+class SuccessResponse(BaseModel):
+    success: bool = True
+
+
+class ForgotPasswordCheckEmailRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+
+
+class ForgotPasswordCheckEmailResponse(BaseModel):
+    registered: bool
+
+
+class ForgotPasswordSendCodeRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+
+
+class ForgotPasswordSendCodeResponse(BaseModel):
+    expires_in_seconds: int
+
+
+class ForgotPasswordVerifyCodeRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    code: str = Field(min_length=4, max_length=12)
+
+
+class ForgotPasswordVerifyCodeResponse(BaseModel):
+    verified: bool
+    reset_token: Optional[str] = None
+
+
+class ForgotPasswordResetRequest(BaseModel):
+    reset_token: str = Field(min_length=16, max_length=255)
+    new_password: str = Field(min_length=6, max_length=255)
+
+
+class UserProfileUpdate(BaseModel):
+    nickname: Optional[str] = Field(default=None, max_length=80)
+
+
+class AvatarResponse(BaseModel):
+    avatar_url: str
+
+
+class UserEmailUpdateRequest(BaseModel):
+    new_email: str = Field(min_length=3, max_length=255)
+    code: Optional[str] = Field(default=None, max_length=12)
+
+
+class UserPasswordUpdateRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=255)
+    new_password: str = Field(min_length=6, max_length=255)
+
+
+class UserPreferences(BaseModel):
+    theme: Literal["light", "dark"] = "light"
+    language: Literal["zh", "en"] = "zh"
+    search_retention_days: int = 30
+    chat_retention_days: int = 30
+    import_platforms: dict[str, bool] = Field(default_factory=dict)
+
+
+class UserPreferencesUpdate(BaseModel):
+    theme: Optional[Literal["light", "dark"]] = None
+    language: Optional[Literal["zh", "en"]] = None
+    search_retention_days: Optional[int] = None
+    chat_retention_days: Optional[int] = None
+    import_platforms: Optional[dict[str, bool]] = None
+
+
+class ImportPlatformsResponse(BaseModel):
+    platforms: dict[str, bool]
+
+
+class ImportPlatformUpdateRequest(BaseModel):
+    platform_key: str = Field(min_length=1, max_length=80)
+    enabled: bool
+
+
+class DeviceInfo(BaseModel):
+    id: str
+    device_name: str
+    ip_address: str
+    login_time: datetime
+    is_current: bool
+
+
+class DeviceListResponse(BaseModel):
+    devices: list[DeviceInfo]
+
+
+class FavoriteCreateRequest(BaseModel):
+    route: RoutePlan
+
+
+class FavoriteCreateResponse(BaseModel):
+    id: str
+    created_at: datetime
+
+
+class FavoriteListResponse(BaseModel):
+    favorites: list[RoutePlan]
+    total: int
+
+
+class AISessionSummary(BaseModel):
+    session_id: str
+    title: str
+    status: AISearchSessionStatus
+    last_message_preview: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class AISessionListResponse(BaseModel):
+    sessions: list[AISessionSummary]
+
+
+class AISessionUpdateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+
+
+class BookingCreateRequest(BaseModel):
+    route_id: str = Field(min_length=1, max_length=255)
+    legs: list[Leg] = Field(default_factory=list)
+
+
+class BookingCreateResponse(BaseModel):
+    booking_id: str
+    status: str
+    redirect_url: Optional[str] = None

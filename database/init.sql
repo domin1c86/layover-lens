@@ -44,6 +44,95 @@ CREATE TABLE IF NOT EXISTS routes (
     FOREIGN KEY (to_station) REFERENCES stations(code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='路线表';
 
+CREATE TABLE IF NOT EXISTS users (
+    id VARCHAR(40) PRIMARY KEY,
+    username VARCHAR(80) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    nickname VARCHAR(80),
+    avatar_url VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
+
+CREATE TABLE IF NOT EXISTS auth_tokens (
+    token_hash CHAR(64) PRIMARY KEY,
+    user_id VARCHAR(40) NOT NULL,
+    device_id VARCHAR(40) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TIMESTAMP NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='登录令牌表';
+
+CREATE TABLE IF NOT EXISTS user_devices (
+    id VARCHAR(40) PRIMARY KEY,
+    user_id VARCHAR(40) NOT NULL,
+    token_hash CHAR(64),
+    device_name VARCHAR(255) NOT NULL,
+    ip_address VARCHAR(80) NOT NULL,
+    login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TIMESTAMP NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户登录设备表';
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    email VARCHAR(255) PRIMARY KEY,
+    code VARCHAR(20) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    reset_token VARCHAR(120),
+    verified_at TIMESTAMP NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='密码重置验证码表';
+
+CREATE TABLE IF NOT EXISTS user_preferences (
+    user_id VARCHAR(40) PRIMARY KEY,
+    theme VARCHAR(10) NOT NULL DEFAULT 'light',
+    language VARCHAR(10) NOT NULL DEFAULT 'zh',
+    search_retention_days INT NOT NULL DEFAULT 30,
+    chat_retention_days INT NOT NULL DEFAULT 30,
+    import_platforms TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户偏好表';
+
+CREATE TABLE IF NOT EXISTS user_favorites (
+    id VARCHAR(40) PRIMARY KEY,
+    user_id VARCHAR(40) NOT NULL,
+    route_id VARCHAR(255) NOT NULL,
+    route_json MEDIUMTEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_user_route (user_id, route_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户收藏路线表';
+
+CREATE TABLE IF NOT EXISTS user_avatars (
+    user_id VARCHAR(40) PRIMARY KEY,
+    content_type VARCHAR(120) NOT NULL,
+    data LONGBLOB NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户头像表';
+
+CREATE TABLE IF NOT EXISTS ai_search_sessions (
+    session_id VARCHAR(80) PRIMARY KEY,
+    user_id VARCHAR(40) NOT NULL,
+    title VARCHAR(120) NOT NULL,
+    status VARCHAR(40) NOT NULL,
+    last_message_preview VARCHAR(255) NOT NULL,
+    response_json MEDIUMTEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI搜索会话表';
+
+CREATE TABLE IF NOT EXISTS bookings (
+    booking_id VARCHAR(40) PRIMARY KEY,
+    user_id VARCHAR(40) NOT NULL,
+    route_id VARCHAR(255) NOT NULL,
+    legs_json MEDIUMTEXT NOT NULL,
+    status VARCHAR(40) NOT NULL,
+    redirect_url VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='预订订单表';
+
 -- ============================================
 -- 插入城市数据（40个主要城市）
 -- ============================================
