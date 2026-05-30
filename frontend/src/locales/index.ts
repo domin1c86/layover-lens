@@ -115,6 +115,8 @@ export const dict = {
       count: '共 {{count}} 条收藏',
       emptyTitle: '暂无收藏的行程',
       emptySubtitle: '在搜索结果中点击收藏按钮添加',
+      addTooltip: '收藏',
+      removeTooltip: '取消收藏',
     },
     footer: {
       support: '支持',
@@ -385,6 +387,8 @@ export const dict = {
       count: '{{count}} favorites',
       emptyTitle: 'No saved trips yet',
       emptySubtitle: 'Click the favorite button in search results to add',
+      addTooltip: 'Add to favorites',
+      removeTooltip: 'Remove from favorites',
     },
     footer: {
       support: 'Support',

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { RoutePlan, Leg } from '../../types';
 import { useLocale } from '../../context/LocaleContext';
+import { useFavoritesContext } from '../../context/FavoritesContext';
 import { Icon, getEmoji } from '../../icons';
 import './ResultList.css';
 
@@ -33,6 +34,8 @@ function getTransportIcon(type: string): string {
 
 function RouteCard({ route, index, lang, t }: { route: RoutePlan; index: number; lang: 'zh' | 'en'; t: (key: string, params?: Record<string, string>) => string }) {
   const [expanded, setExpanded] = useState(false);
+  const { isFavorite, toggleFavorite } = useFavoritesContext();
+  const fav = isFavorite(route.id);
   const firstLeg = route.legs[0];
   const lastLeg = route.legs[route.legs.length - 1];
 
@@ -55,6 +58,14 @@ function RouteCard({ route, index, lang, t }: { route: RoutePlan; index: number;
             <LegInfo key={i} leg={leg} index={i} totalLegs={route.legs.length} lang={lang} t={t} />
           ))}
         </div>
+        <button
+          className={`route-card__favorite ${fav ? 'active' : ''}`}
+          onClick={() => toggleFavorite(route)}
+          title={fav ? t('favorites.removeTooltip') : t('favorites.addTooltip')}
+          aria-label={fav ? t('favorites.removeTooltip') : t('favorites.addTooltip')}
+        >
+          <Icon name="actions.heart" size={32} />
+        </button>
       </div>
       <div className="route-card__actions">
         <button className="btn btn--secondary" onClick={() => setExpanded(!expanded)}>

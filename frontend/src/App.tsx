@@ -3,6 +3,7 @@ import HomePage from './pages/HomePage'
 import { ThemeProvider } from './context/ThemeContext'
 import { LocaleProvider } from './context/LocaleContext'
 import { AuthProvider } from './context/AuthContext'
+import { FavoritesProvider } from './context/FavoritesContext'
 import SettingsModal from './components/SettingsModal'
 import LoginModal from './components/AuthModals/LoginModal'
 import RegisterModal from './components/AuthModals/RegisterModal'
@@ -39,7 +40,8 @@ function App() {
     <LocaleProvider>
       <ThemeProvider>
         <AuthProvider>
-          <div className="app">
+          <FavoritesProvider>
+            <div className="app">
             <HomePage
               onOpenSettings={() => setIsSettingsOpen(true)}
               onOpenLogin={openLogin}
@@ -64,7 +66,8 @@ function App() {
               onSwitchToRegister={handleForgotPasswordSwitchToRegister}
               onSuccess={handleForgotPasswordSuccess}
             />
-          </div>
+            </div>
+          </FavoritesProvider>
         </AuthProvider>
       </ThemeProvider>
     </LocaleProvider>

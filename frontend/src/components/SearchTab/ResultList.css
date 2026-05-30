@@ -57,6 +57,7 @@
 }
 
 .route-card {
+  position: relative;
   background: var(--canvas);
   border: 1px solid var(--hairline-soft);
   border-radius: var(--rounded-md);
@@ -64,6 +65,32 @@
   margin-bottom: var(--space-base);
   box-shadow: var(--shadow-card);
   transition: box-shadow 0.2s;
+}
+
+.route-card__favorite {
+  align-self: flex-start;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  color: var(--ink);
+  opacity: 0.55;
+  transition: opacity 0.2s, color 0.2s;
+  line-height: 0;
+}
+
+.route-card__favorite:hover {
+  opacity: 0.85;
+}
+
+.route-card__favorite.active {
+  color: #e8b430;
+  opacity: 1;
+}
+
+.route-card__favorite.active svg {
+  fill: #e8b430;
 }
 
 .route-card:hover {

@@ -2,10 +2,9 @@ import { useState, useEffect } from 'react';
 import type { RoutePlan } from '../../types';
 import ResultList from '../SearchTab/ResultList';
 import { useLocale } from '../../context/LocaleContext';
+import { useFavoritesContext } from '../../context/FavoritesContext';
 import { Icon } from '../../icons';
 import './FavoritesTab.css';
-
-const STORAGE_KEY = 'layover-lens-favorites';
 
 // ─────────────────────────────────────────────────────────────────────
 // DEMO DATA — SEED_FAVORITES is sample display content only.
@@ -620,60 +619,32 @@ const SEED_FAVORITES: RoutePlan[] = [
   },
 ];
 
-function loadFavorites(): RoutePlan[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(parsed)) return [];
-    return parsed;
-  } catch {
-    return [];
-  }
-}
+export default function FavoritesTab() {
+  const { favorites } = useFavoritesContext();
+  const { t } = useLocale();
 
-function saveFavorites(routes: RoutePlan[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(routes));
-  } catch {
-    // Quota exceeded or private mode
-  }
-}
-
-export function useFavorites() {
-  const [favorites, setFavorites] = useState<RoutePlan[]>(loadFavorites);
+  // Snapshot favorites on mount so unfavoriting a card doesn't immediately
+  // remove it from view — the card stays until the user leaves and revisits
+  // the tab (or refreshes the page).
+  const [displayedFavorites, setDisplayedFavorites] = useState<RoutePlan[]>(() => favorites);
 
   useEffect(() => {
-    saveFavorites(favorites);
-  }, [favorites]);
-
-  const toggleFavorite = (route: RoutePlan) => {
-    setFavorites((prev) => {
-      const exists = prev.some((r) => r.id === route.id);
-      if (exists) return prev.filter((r) => r.id !== route.id);
-      return [...prev, route];
-    });
-  };
-
-  const isFavorite = (routeId: string) => favorites.some((r) => r.id === routeId);
-
-  return { favorites, toggleFavorite, isFavorite };
-}
-
-export default function FavoritesTab() {
-  const { favorites } = useFavorites();
-  const { t } = useLocale();
+    // Re-sync on mount only — not on favorites change.
+    setDisplayedFavorites(favorites);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="favorites">
       <div className="container">
         <h2 className="results-header">{t('favorites.title')}</h2>
-        {favorites.length > 0 ? (
+        {displayedFavorites.length > 0 ? (
           <ResultList
-            routes={favorites}
+            routes={displayedFavorites}
             loading={false}
             error=""
             searched={true}
-            header={t('favorites.count', { count: String(favorites.length) })}
+            header={t('favorites.count', { count: String(displayedFavorites.length) })}
           />
         ) : (
           <div className="empty-state">
