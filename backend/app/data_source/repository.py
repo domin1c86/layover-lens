@@ -97,6 +97,7 @@ class InMemoryCatalogRepository(CatalogRepository):
                     duration_minutes=185,
                     company="中国国航",
                     flight_train_no="CA1861",
+                    platform="ctrip",
                 ),
                 RouteRecord(
                     id="BJS-CDS-G87",
@@ -111,6 +112,7 @@ class InMemoryCatalogRepository(CatalogRepository):
                     duration_minutes=718,
                     company="中国铁路",
                     flight_train_no="G87",
+                    platform="12306",
                 ),
                 RouteRecord(
                     id="PEK-XIY-MU2201",
@@ -125,6 +127,7 @@ class InMemoryCatalogRepository(CatalogRepository):
                     duration_minutes=130,
                     company="东方航空",
                     flight_train_no="MU2201",
+                    platform="qunar",
                 ),
                 RouteRecord(
                     id="XAS-CDS-D1911",
@@ -139,6 +142,7 @@ class InMemoryCatalogRepository(CatalogRepository):
                     duration_minutes=238,
                     company="中国铁路",
                     flight_train_no="D1911",
+                    platform="12306",
                 ),
                 RouteRecord(
                     id="PEK-WUH-CZ3137",
@@ -153,6 +157,7 @@ class InMemoryCatalogRepository(CatalogRepository):
                     duration_minutes=130,
                     company="南方航空",
                     flight_train_no="CZ3137",
+                    platform="fliggy",
                 ),
                 RouteRecord(
                     id="WHH-CDS-G345",
@@ -167,6 +172,7 @@ class InMemoryCatalogRepository(CatalogRepository):
                     duration_minutes=332,
                     company="中国铁路",
                     flight_train_no="G345",
+                    platform="12306",
                 ),
                 RouteRecord(
                     id="PEK-NKG-MU2811",
@@ -181,6 +187,7 @@ class InMemoryCatalogRepository(CatalogRepository):
                     duration_minutes=130,
                     company="东方航空",
                     flight_train_no="MU2811",
+                    platform="ctrip",
                 ),
                 RouteRecord(
                     id="NJS-CDS-D2241",
@@ -195,6 +202,7 @@ class InMemoryCatalogRepository(CatalogRepository):
                     duration_minutes=413,
                     company="中国铁路",
                     flight_train_no="D2241",
+                    platform="12306",
                 ),
                 RouteRecord(
                     id="PEK-PVG-CA1501",
@@ -209,6 +217,7 @@ class InMemoryCatalogRepository(CatalogRepository):
                     duration_minutes=140,
                     company="中国国航",
                     flight_train_no="CA1501",
+                    platform="ctrip",
                 ),
                 RouteRecord(
                     id="SHH-CDS-G2191",
@@ -223,6 +232,7 @@ class InMemoryCatalogRepository(CatalogRepository):
                     duration_minutes=631,
                     company="中国铁路",
                     flight_train_no="G2191",
+                    platform="12306",
                 ),
                 RouteRecord(
                     id="CAN-SZX-CZ3351",
@@ -237,6 +247,7 @@ class InMemoryCatalogRepository(CatalogRepository):
                     duration_minutes=70,
                     company="南方航空",
                     flight_train_no="CZ3351",
+                    platform="fliggy",
                 ),
             ),
         )
@@ -334,7 +345,8 @@ class MySQLCatalogRepository(CatalogRepository):
                     price,
                     duration_minutes,
                     COALESCE(company, '') AS company,
-                    COALESCE(flight_train_no, '') AS flight_train_no
+                    COALESCE(flight_train_no, '') AS flight_train_no,
+                    COALESCE(platform, '') AS platform
                 FROM routes
                 ORDER BY from_station, to_station, departure_date, departure_time, flight_train_no
                 """
@@ -356,6 +368,7 @@ class MySQLCatalogRepository(CatalogRepository):
                     duration_minutes=int(row["duration_minutes"]),
                     company=row["company"],
                     flight_train_no=row["flight_train_no"],
+                    platform=row["platform"],
                 )
                 for row in cursor.fetchall()
             )

@@ -102,6 +102,7 @@ class SearchService:
                 price=planned_leg.price,
                 company=planned_leg.company,
                 flight_train_no=planned_leg.flight_train_no,
+                platform=route_rec.platform if route_rec else "",
             )
 
         routes = [

@@ -61,6 +61,7 @@ class Leg(BaseModel):
     price: float
     company: str
     flight_train_no: str
+    platform: str = ""
 
 
 class RoutePlan(BaseModel):

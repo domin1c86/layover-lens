@@ -181,6 +181,22 @@
   font-size: 12px;
   color: var(--muted);
   margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.route-card__platform-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  border: 1px solid var(--hairline-soft);
+  line-height: 1.5;
 }
 
 .route-card__transfer {

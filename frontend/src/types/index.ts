@@ -38,6 +38,7 @@ export interface Leg {
   price: number;
   company: string;
   flight_train_no: string;
+  platform?: string;
 }
 
 // 路线方案

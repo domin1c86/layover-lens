@@ -37,6 +37,7 @@ class RouteRecord:
     duration_minutes: int
     company: str
     flight_train_no: str
+    platform: str = ""
 
 
 @dataclass(frozen=True)
