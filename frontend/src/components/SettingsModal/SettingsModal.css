@@ -1,0 +1,688 @@
+/* Overlay */
+.settings-modal__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+/* Dialog */
+.settings-modal__dialog {
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: rgba(0, 0, 0, 0.02) 0 0 0 1px, rgba(0, 0, 0, 0.04) 0 2px 6px, rgba(0, 0, 0, 0.1) 0 4px 8px;
+  width: 100%;
+  max-width: 800px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header */
+.settings-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #dddddd;
+}
+
+.settings-modal__title {
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.20;
+  letter-spacing: -0.18px;
+  color: #222222;
+  margin: 0;
+}
+
+.settings-modal__close {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #222222;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+}
+
+.settings-modal__close:hover {
+  background: #f2f2f2;
+}
+
+/* Body */
+.settings-modal__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Desktop Nav */
+.settings-nav__desktop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 200px;
+  padding: 24px;
+  border-right: 1px solid #dddddd;
+  flex-shrink: 0;
+}
+
+.settings-nav__item {
+  background: transparent;
+  border: none;
+  text-align: center;
+  cursor: pointer;
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.43;
+  color: #6a6a6a;
+  padding: 8px 12px;
+  border-radius: var(--rounded-full);
+  position: relative;
+  transition: background-color 0.25s ease, color 0.25s ease, font-weight 0.25s ease;
+}
+
+.settings-nav__item:hover {
+  background-color: #ebebeb;
+  color: #222222;
+}
+
+.settings-nav__item:active {
+  background-color: #d0d0d0;
+}
+
+.settings-nav__item::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  width: 40%;
+  height: 2px;
+  background: #222222;
+  border-radius: 1px;
+  transform: translateX(-50%) scaleX(0);
+  transform-origin: center;
+  transition: transform 0.35s ease;
+}
+
+.settings-nav__item.active {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.settings-nav__item.active::after {
+  transform: translateX(-50%) scaleX(1);
+}
+
+.settings-nav__item.disabled {
+  color: #c0c0c0;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.settings-nav__item.disabled:hover {
+  background-color: transparent;
+  color: #c0c0c0;
+}
+
+/* Mobile Nav (hidden on desktop) */
+.settings-nav__mobile {
+  display: none;
+}
+
+/* Content */
+.settings-modal__content {
+  flex: 1;
+  padding: 32px;
+  overflow-y: auto;
+}
+
+/* Panel styles */
+.settings-panel__title {
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.20;
+  letter-spacing: -0.18px;
+  color: #222222;
+  margin: 0 0 24px 0;
+}
+
+.settings-panel__section {
+  margin-bottom: 24px;
+}
+
+.settings-panel__label {
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.43;
+  color: #222222;
+  margin-bottom: 8px;
+}
+
+.settings-panel__hint {
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.33;
+  color: #6a6a6a;
+  margin: 6px 0 0 0;
+}
+
+.settings-panel__row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-panel__row--stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.settings-panel__input {
+  flex: 1;
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.43;
+  color: #222222;
+  padding: 10px 12px;
+  border: 1px solid #dddddd;
+  border-radius: 8px;
+  background: #ffffff;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  min-width: 0;
+}
+
+.settings-panel__input:focus {
+  border-color: #222222;
+}
+
+.settings-panel__input[readonly] {
+  background: #f7f7f7;
+  color: #6a6a6a;
+  cursor: not-allowed;
+}
+
+.settings-panel__btn {
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.43;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.settings-panel__btn:active {
+  transform: scale(0.98);
+}
+
+.settings-panel__btn--primary {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.settings-panel__btn--primary:hover {
+  background: var(--primary-active);
+}
+
+.settings-panel__btn--secondary {
+  background: #ffffff;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+}
+
+.settings-panel__btn--secondary:hover {
+  background: var(--primary-disabled);
+}
+
+.settings-panel__btn--danger {
+  background: #fff0f0;
+  color: #c13515;
+  border: 1px solid #ffcaca;
+}
+
+.settings-panel__btn--danger:hover {
+  background: #ffe0e0;
+}
+
+.settings-panel__btn--gray {
+  background: transparent;
+  color: #4a4a4a;
+  border: 1px solid #4a4a4a;
+}
+
+.settings-panel__btn--gray:hover {
+  background: #f7f7f7;
+}
+
+.settings-panel__link {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin-top: 8px;
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--primary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s ease;
+}
+
+.settings-panel__link:hover {
+  color: var(--primary-active);
+}
+
+.settings-panel__password-box {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.settings-panel__avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.settings-panel__avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #ebebeb;
+  flex-shrink: 0;
+}
+
+.settings-panel__options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-panel__option {
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.43;
+  color: #222222;
+  padding: 8px 16px;
+  border-radius: var(--rounded-full);
+  border: 1px solid #dddddd;
+  background: #ffffff;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.settings-panel__option:hover {
+  background: #f7f7f7;
+}
+
+.settings-panel__option.active {
+  background: #cc785c;
+  color: #ffffff;
+  border-color: #cc785c;
+  font-weight: 600;
+}
+
+.settings-panel__platform-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-panel__platform-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border: 1px solid #ebebeb;
+  border-radius: 8px;
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  color: #222222;
+}
+
+.settings-panel__device-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-panel__device-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border: 1px solid #ebebeb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.settings-panel__device-row.current {
+  border-color: #222222;
+  background: #fafafa;
+}
+
+.settings-panel__device-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-panel__device-name {
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #222222;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-panel__device-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffffff;
+  background: #222222;
+  padding: 2px 8px;
+  border-radius: var(--rounded-full);
+}
+
+.settings-panel__device-meta {
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 12px;
+  color: #6a6a6a;
+}
+
+/* Email status pill */
+.settings-panel__status-pill {
+  width: 6px;
+  height: 28px;
+  border-radius: var(--rounded-full);
+  flex-shrink: 0;
+  background: #e2e2e2;
+  transition: background-color 0.25s ease;
+}
+
+.settings-panel__status-pill.verified {
+  background: #008a05;
+}
+
+.settings-panel__status-pill.unverified {
+  background: #eaa300;
+}
+
+.settings-panel__status-pill.invalid {
+  background: #c13515;
+}
+
+/* Toggle switch */
+.settings-panel__toggle {
+  width: 44px;
+  height: 24px;
+  border-radius: var(--rounded-full);
+  background: #b0b0b0;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  padding: 0;
+  transition: background-color 0.25s ease;
+}
+
+.settings-panel__toggle.active {
+  background: #34c759;
+}
+
+.settings-panel__toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: transform 0.25s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.settings-panel__toggle.active .settings-panel__toggle-knob {
+  transform: translateX(20px);
+}
+
+/* Mobile layout */
+@media (max-width: 743px) {
+  .settings-modal__overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .settings-modal__dialog {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 0;
+    height: 100%;
+  }
+
+  .settings-modal__body {
+    flex-direction: column;
+  }
+
+  .settings-nav__desktop {
+    display: none;
+  }
+
+  .settings-nav__mobile {
+    display: flex;
+    gap: 4px;
+    padding: 12px 16px 8px;
+    height: 56px;
+    align-items: center;
+    border-bottom: 1px solid #dddddd;
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex-shrink: 0;
+  }
+
+  .settings-nav__mobile::-webkit-scrollbar {
+    display: none;
+  }
+
+  .settings-nav__mobile-item {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.43;
+    color: #6a6a6a;
+    padding: 6px 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    border-radius: var(--rounded-full);
+    position: relative;
+    transition: color 0.2s, background-color 0.2s, box-shadow 0.2s;
+  }
+
+  .settings-nav__mobile-item:hover {
+    color: #222222;
+    background-color: #ebebeb;
+  }
+
+  .settings-nav__mobile-item:active:not(.active) {
+    background-color: #d0d0d0;
+    color: #222222;
+  }
+
+  .settings-nav__mobile-item::after {
+    content: '';
+    position: absolute;
+    bottom: 2px;
+    left: 50%;
+    width: 40%;
+    height: 2px;
+    background: #222222;
+    border-radius: 1px;
+    transform: translateX(-50%) scaleX(0);
+    transform-origin: center;
+    transition: transform 0.35s ease;
+  }
+
+  .settings-nav__mobile-item.active {
+    color: var(--primary);
+    font-weight: 600;
+    background-color: transparent;
+  }
+
+  .settings-nav__mobile-item.active::after {
+    transform: translateX(-50%) scaleX(1);
+  }
+
+  .settings-nav__mobile-item.disabled {
+    color: #c0c0c0;
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .settings-nav__mobile-item.disabled:hover {
+    background-color: transparent;
+    color: #c0c0c0;
+  }
+
+  .settings-modal__content {
+    padding: 24px;
+  }
+}
+
+/* Forgot password modal */
+.forgot-modal__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 24px;
+}
+
+.forgot-modal__dialog {
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: rgba(0, 0, 0, 0.04) 0 2px 6px, rgba(0, 0, 0, 0.1) 0 4px 8px;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.forgot-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #dddddd;
+}
+
+.forgot-modal__title {
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.20;
+  color: #222222;
+  margin: 0;
+}
+
+.forgot-modal__close {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #222222;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.forgot-modal__close:hover {
+  background: #f2f2f2;
+}
+
+.forgot-modal__body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.forgot-modal__desc {
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.43;
+  color: #6a6a6a;
+  margin: 0 0 4px 0;
+}
+
+.forgot-modal__error {
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.33;
+  color: #c13515;
+  margin: 0;
+}
+
+.forgot-modal__success {
+  font-family: 'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.43;
+  color: #008a05;
+  text-align: center;
+  margin: 0;
+}
+
+.forgot-modal__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.forgot-modal__actions .settings-panel__btn {
+  flex: 1;
+}
+
+.forgot-modal__body .settings-panel__btn--primary {
+  background: #cc785c;
+}
+
+.forgot-modal__body .settings-panel__btn--primary:hover {
+  background: #b5644a;
+}

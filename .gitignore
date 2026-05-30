@@ -1,2 +1,23 @@
-.superpowers/
 CLAUDE.md
+CLAUDE - COPY.md
+AGENTS.md
+DESIGN.md
+plan.md
+verify-anim.spec.js
+
+.claude/
+.superpowers/
+frontend-prototype/
+design-demo/
+docs/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.venv39/
+.env/
+node_modules/
+dist/
+build/
+test-results/
+test/
