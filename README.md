@@ -120,7 +120,7 @@ docker compose exec backend python -m pytest tests/ -v
 | `DELETE` | `/api/v1/favorites/{id}` | 取消收藏 |
 | `GET` | `/health` | 服务健康检查与后端信息 |
 
-完整接口文档：[docs/frontend-api-specification.md](docs/frontend-api-specification.md)
+完整接口文档：[description/api-interface-list.md](description/api-interface-list.md)
 
 ## 配置项
 
@@ -162,7 +162,7 @@ layover-lens/
 │   ├── planner/          C++17 路线规划引擎（pybind11 绑定）
 │   └── tests/            后端测试
 ├── database/             MySQL 建表 + 种子数据
-├── docs/                 项目文档
+├── description/          项目文档
 └── docker-compose.yml    三服务容器编排
 ```
 

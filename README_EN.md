@@ -124,7 +124,7 @@ docker compose exec backend python -m pytest tests/ -v
 | `DELETE` | `/api/v1/favorites/{id}` | Remove a favorite |
 | `GET` | `/health` | Service health & backend info |
 
-Full API spec: [docs/frontend-api-specification.md](docs/frontend-api-specification.md)
+Full API spec: [description/api-interface-list.md](description/api-interface-list.md)
 
 ## Configuration
 
@@ -166,7 +166,7 @@ layover-lens/
 │   ├── planner/         C++17 route planner (pybind11)
 │   └── tests/
 ├── database/            MySQL schema + seed data
-├── docs/                Documentation
+├── description/         Documentation
 └── docker-compose.yml   3-service orchestration
 ```
 
