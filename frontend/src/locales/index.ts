@@ -67,6 +67,8 @@ export const dict = {
       operationFailed: '操作失败',
       about: '关于本站',
       loginRequired: '请您登录后再使用AI搜索',
+      maintenanceTitle: 'AI 搜索内测暂未开放',
+      maintenanceSubtitle: '当前版本先开放普通路线搜索。AI 搜索不会调用外部模型，后续配置 API key 后再启用。',
     },
     calendar: {
       today: '今天',
@@ -115,6 +117,7 @@ export const dict = {
       tryAdjust: '尝试调整搜索条件或日期',
       searching: '正在搜索最优路线...',
       resultsHeader: '找到 {{count}} 个方案',
+      mockNotice: '内测版使用模拟班次和价格数据，仅用于体验搜索、筛选和收藏流程，请勿用于真实购票决策。',
     },
     favorites: {
       title: '我的收藏',
@@ -345,6 +348,8 @@ export const dict = {
       operationFailed: 'Operation failed',
       about: 'About',
       loginRequired: 'Please log in to use AI search',
+      maintenanceTitle: 'AI Search is not open in this beta',
+      maintenanceSubtitle: 'This beta focuses on regular route search. AI search will not call an external model until an API key is configured.',
     },
     calendar: {
       today: 'Today',
@@ -393,6 +398,7 @@ export const dict = {
       tryAdjust: 'Try adjusting search criteria or dates',
       searching: 'Searching for optimal routes...',
       resultsHeader: 'Found {{count}} options',
+      mockNotice: 'Beta uses simulated schedules and prices for search, filter, and favorites testing only. Do not use it for real booking decisions.',
     },
     favorites: {
       title: 'My Favorites',

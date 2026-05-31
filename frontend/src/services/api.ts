@@ -6,7 +6,12 @@ import type {
   City,
   AiSessionResponse,
   AiConfirmRequest,
+  AuthLoginRequest,
+  AuthRegisterRequest,
+  AuthTokenResponse,
+  UserProfile,
 } from '../types';
+import { clearAuthSession, getStoredAuthToken } from './authStorage';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -19,6 +24,59 @@ const apiClient = axios.create({
 });
 
 // 搜索 API
+apiClient.interceptors.request.use((config) => {
+  const token = getStoredAuthToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  } else if (config.headers.Authorization) {
+    delete config.headers.Authorization;
+  }
+  return config;
+});
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401) {
+      clearAuthSession();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('auth:unauthorized'));
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+export function getApiErrorMessage(error: unknown, fallback = '请求失败，请稍后重试。'): string {
+  if (axios.isAxiosError(error)) {
+    const detail = error.response?.data?.detail;
+    if (typeof detail === 'string') return detail;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
+export const authApi = {
+  register: async (request: AuthRegisterRequest): Promise<AuthTokenResponse> => {
+    const response = await apiClient.post<AuthTokenResponse>('/auth/register', request);
+    return response.data;
+  },
+
+  login: async (request: AuthLoginRequest): Promise<AuthTokenResponse> => {
+    const response = await apiClient.post<AuthTokenResponse>('/auth/login', request);
+    return response.data;
+  },
+
+  logout: async (): Promise<void> => {
+    await apiClient.post('/auth/logout');
+  },
+
+  getProfile: async (): Promise<UserProfile> => {
+    const response = await apiClient.get<UserProfile>('/user/profile');
+    return response.data;
+  },
+};
+
 export const searchApi = {
   search: async (request: SearchRequest): Promise<SearchResponse> => {
     const response = await apiClient.post<SearchResponse>('/search', request);

@@ -19,6 +19,7 @@ interface AiChatAreaProps {
   onConfirm: () => void;
   onReject: () => void;
   showConfirm: boolean;
+  disabled?: boolean;
 }
 
 const EXAMPLES = [
@@ -28,7 +29,7 @@ const EXAMPLES = [
   { zh: '成都到杭州，优先时间短', en: 'Chengdu to Hangzhou, fastest route' },
 ];
 
-export default function AiChatArea({ messages, onSend, loading, status, onConfirm, onReject, showConfirm }: AiChatAreaProps) {
+export default function AiChatArea({ messages, onSend, loading, status, onConfirm, onReject, showConfirm, disabled = false }: AiChatAreaProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { lang, t } = useLocale();
@@ -39,7 +40,7 @@ export default function AiChatArea({ messages, onSend, loading, status, onConfir
 
   const handleSend = () => {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || loading || disabled) return;
     onSend(text);
     setInput('');
   };
@@ -51,7 +52,13 @@ export default function AiChatArea({ messages, onSend, loading, status, onConfir
   return (
     <div className="ai-search__main">
       <div className="ai-search__messages">
-        {messages.length === 0 ? (
+        {disabled ? (
+          <div className="ai-search__welcome ai-search__maintenance">
+            <div className="ai-search__maintenance-icon"><Icon name="status.warning" /></div>
+            <h2>{t('aiChat.maintenanceTitle')}</h2>
+            <p>{t('aiChat.maintenanceSubtitle')}</p>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="ai-search__welcome">
             <h2>{t('aiChat.welcomeTitle')}</h2>
             <p>{t('aiChat.welcomeSubtitle')}</p>
@@ -104,9 +111,9 @@ export default function AiChatArea({ messages, onSend, loading, status, onConfir
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={loading}
+            disabled={loading || disabled}
           />
-          <button className="ai-search__send" onClick={handleSend} disabled={loading}>
+          <button className="ai-search__send" onClick={handleSend} disabled={loading || disabled}>
             <Icon name="actions.send" />
           </button>
         </div>

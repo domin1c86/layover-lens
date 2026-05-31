@@ -51,6 +51,8 @@ class SearchService:
         catalog = self._data_source.get_catalog()
         from_city_code = self._resolve_city_code(request.from_city, catalog.cities)
         to_city_code = self._resolve_city_code(request.to_city, catalog.cities)
+        source_date = self._select_mock_source_date(catalog.routes, request.travel_date)
+        date_shift = request.travel_date - source_date
         max_transfers = (
             request.max_transfers
             if request.max_transfers is not None
@@ -67,7 +69,7 @@ class SearchService:
             catalog=catalog,
             from_city_code=from_city_code,
             to_city_code=to_city_code,
-            travel_date=request.travel_date,
+            travel_date=source_date,
             optimization_target=request.optimization_target,
             max_transfers=max_transfers,
             constraints=constraints,
@@ -77,6 +79,9 @@ class SearchService:
         station_map = {station.code: station for station in catalog.stations}
         city_map = {city.code: city for city in catalog.cities}
         route_map = {route.id: route for route in catalog.routes}
+
+        def _shift_date(value: date) -> str:
+            return (value + date_shift).strftime("%Y-%m-%d")
 
         def _enrich_leg(planned_leg):
             route_rec = route_map.get(planned_leg.route_id)
@@ -94,9 +99,9 @@ class SearchService:
                 to_station=planned_leg.to_station,
                 from_station_en=from_station_rec.name_en if from_station_rec else "",
                 to_station_en=to_station_rec.name_en if to_station_rec else "",
-                departure_date=planned_leg.departure_at.strftime("%Y-%m-%d"),
+                departure_date=_shift_date(planned_leg.departure_at.date()),
                 departure_time=planned_leg.departure_time,
-                arrival_date=planned_leg.arrival_at.strftime("%Y-%m-%d"),
+                arrival_date=_shift_date(planned_leg.arrival_at.date()),
                 arrival_time=planned_leg.arrival_time,
                 duration_minutes=planned_leg.duration_minutes,
                 price=planned_leg.price,
@@ -123,6 +128,12 @@ class SearchService:
             routes=routes,
             total_count=len(routes),
             total=len(routes),
+            data_mode="mock",
+            data_notice=(
+                "Mock beta data: schedules and prices are simulated for product testing "
+                "and are not valid for booking decisions."
+            ),
+            mock_source_date=source_date.isoformat(),
         )
 
     def list_cities(self, keyword: Optional[str] = None) -> list[City]:
@@ -226,6 +237,15 @@ class SearchService:
         if session is None:
             raise ValueError(f"Unknown AI session: {session_id}")
         return session
+
+    @staticmethod
+    def _select_mock_source_date(routes: tuple, requested_date: date) -> date:
+        available_dates = sorted({route.departure_date for route in routes})
+        if not available_dates:
+            return requested_date
+        if requested_date in available_dates:
+            return requested_date
+        return available_dates[0]
 
     @staticmethod
     def _resolve_city_code(search_value: str, cities: tuple) -> str:

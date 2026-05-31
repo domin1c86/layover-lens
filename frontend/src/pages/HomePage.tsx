@@ -37,6 +37,7 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
   });
   const [optimize, setOptimize] = useState<OptimizationTarget>('balanced');
   const [routes, setRoutes] = useState<RoutePlan[]>([]);
+  const [dataNotice, setDataNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searched, setSearched] = useState(false);
@@ -205,9 +206,11 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
 
       const response = await searchApi.search(request);
       setRoutes(response.routes);
+      setDataNotice(response.data_notice || '');
     } catch (err: any) {
       const msg = err?.response?.data?.detail || t('errors.searchFailed');
       setError(msg);
+      setDataNotice('');
     } finally {
       setLoading(false);
     }
@@ -277,6 +280,7 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
               loading={loading}
               error={error}
               searched={searched}
+              dataNotice={dataNotice}
               onQuickSearch={handleQuickSearch}
             />
           )}

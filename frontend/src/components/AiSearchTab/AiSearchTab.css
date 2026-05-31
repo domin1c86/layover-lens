@@ -270,6 +270,23 @@
   margin-bottom: 32px;
 }
 
+.ai-search__maintenance {
+  padding: 24px;
+}
+
+.ai-search__maintenance-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  border-radius: var(--rounded-full);
+  background: var(--surface-soft);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+
 .ai-search__examples {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

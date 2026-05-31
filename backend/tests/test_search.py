@@ -61,6 +61,9 @@ def test_search_endpoint_returns_ranked_routes() -> None:
     payload = response.json()
     assert payload["total_count"] >= 1
     assert payload["total"] == payload["total_count"]
+    assert payload["data_mode"] == "mock"
+    assert payload["data_notice"]
+    assert payload["mock_source_date"]
     first_route = payload["routes"][0]
     assert first_route["id"].startswith("route_")
     assert first_route["legs"]
@@ -103,22 +106,24 @@ def test_search_unknown_city_returns_404() -> None:
     assert response.status_code == 404
 
 
-def test_search_returns_empty_for_unseeded_date() -> None:
+def test_search_rolls_mock_data_to_unseeded_date() -> None:
     client = _fresh_client()
     response = client.post(
         "/api/v1/search",
         json={
             "from_city": "BJ",
             "to_city": "CD",
-            "travel_date": "2026-04-30",
+            "travel_date": "2026-06-15",
             "optimization_target": "balanced",
         },
     )
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["total_count"] == 0
-    assert payload["routes"] == []
+    assert payload["total_count"] >= 1
+    assert payload["data_mode"] == "mock"
+    assert payload["mock_source_date"] != "2026-06-15"
+    assert payload["routes"][0]["legs"][0]["departure_date"] == "2026-06-15"
 
 
 def test_search_supports_price_and_transport_filters() -> None:
@@ -127,7 +132,7 @@ def test_search_supports_price_and_transport_filters() -> None:
         "/api/v1/search",
         json={
             "from_city": "BJ",
-            "to_city": "CD",
+            "to_city": "SH",
             "travel_date": "2026-04-22",
             "optimization_target": "price",
             "preferred_transport_types": ["train"],
@@ -138,7 +143,7 @@ def test_search_supports_price_and_transport_filters() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["total_count"] == 1
+    assert payload["total_count"] >= 1
     route = payload["routes"][0]
     assert route["total_price"] <= 800
     assert all(leg["transport_type"] == "train" for leg in route["legs"])
@@ -153,8 +158,8 @@ def test_search_supports_transfer_city_constraints() -> None:
             "to_city": "CD",
             "travel_date": "2026-04-22",
             "optimization_target": "balanced",
-            "required_transfer_cities": ["XA"],
-            "excluded_cities": ["WH", "NJ", "SH"],
+            "required_transfer_cities": ["SH"],
+            "excluded_cities": ["WH", "NJ", "XA"],
             "max_transfers": 2,
         },
     )
@@ -164,7 +169,7 @@ def test_search_supports_transfer_city_constraints() -> None:
     assert payload["total_count"] == 1
     route = payload["routes"][0]
     transfer_cities = {leg["to_city"] for leg in route["legs"][:-1]}
-    assert transfer_cities == {"西安"}
+    assert transfer_cities == {"上海"}
 
 
 def test_search_supports_time_window_filters() -> None:
@@ -176,7 +181,7 @@ def test_search_supports_time_window_filters() -> None:
             "to_city": "CD",
             "travel_date": "2026-04-22",
             "optimization_target": "balanced",
-            "departure_time_range": {"start": "08:00", "end": "08:30"},
+            "departure_time_range": {"start": "07:30", "end": "08:30"},
             "arrival_time_range": {"start": "10:30", "end": "20:00"},
             "max_transfers": 2,
         },
@@ -188,7 +193,7 @@ def test_search_supports_time_window_filters() -> None:
     for route in payload["routes"]:
         first_leg = route["legs"][0]
         last_leg = route["legs"][-1]
-        assert "08:00" <= first_leg["departure_time"] <= "08:30"
+        assert "07:30" <= first_leg["departure_time"] <= "08:30"
         assert "10:30" <= last_leg["arrival_time"] <= "20:00"
 
 

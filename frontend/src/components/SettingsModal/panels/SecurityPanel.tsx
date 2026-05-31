@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useLocale } from '../../../context/LocaleContext'
 import { useAuth } from '../../../context/AuthContext'
 import ForgotPasswordModal from './ForgotPasswordModal'
+import type { SessionDuration } from '../../../types'
 
 function maskEmail(email: string) {
   const [name, domain] = email.split('@')
@@ -12,8 +13,8 @@ function maskEmail(email: string) {
 }
 
 export default function SecurityPanel() {
-  const { t } = useLocale()
-  const { user } = useAuth()
+  const { lang, t } = useLocale()
+  const { user, sessionDuration, setSessionDuration } = useAuth()
   const [email, setEmail] = useState(user?.email || '')
   const [emailEditing, setEmailEditing] = useState(false)
   const [isEmailVerified] = useState(!!user)
@@ -34,8 +35,40 @@ export default function SecurityPanel() {
     setShowForgotModal(true)
   }
 
+  const durationOptions: Array<{ value: SessionDuration; label: string }> = [
+    { value: 'day', label: lang === 'en' ? 'One day' : '一天' },
+    { value: 'week', label: lang === 'en' ? 'One week' : '一周' },
+    { value: 'month', label: lang === 'en' ? 'One month' : '一月' },
+    { value: 'half_year', label: lang === 'en' ? 'Six months' : '半年' },
+    { value: 'year', label: lang === 'en' ? 'One year' : '一年' },
+    { value: 'forever', label: lang === 'en' ? 'Forever' : '永久' },
+  ]
+
   return (
     <div className="settings-panel">
+      <div className="settings-panel__section">
+        <div className="settings-panel__label">
+          {lang === 'en' ? 'Session duration' : '登录保持时长'}
+        </div>
+        <div className="settings-panel__options">
+          {durationOptions.map((option) => (
+            <button
+              key={option.value}
+              className={`settings-panel__option ${sessionDuration === option.value ? 'active' : ''}`}
+              type="button"
+              onClick={() => setSessionDuration(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <p className="settings-panel__hint">
+          {lang === 'en'
+            ? 'This applies the next time you sign in. The current session will not be extended automatically.'
+            : '该设置将在下次登录或注册时生效，当前登录不会被自动延长。'}
+        </p>
+      </div>
+
       <div className="settings-panel__section">
         <div className="settings-panel__label">{t('settings.security.email')}</div>
         <div className="settings-panel__row">
