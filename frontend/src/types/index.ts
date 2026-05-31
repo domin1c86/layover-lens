@@ -76,6 +76,9 @@ export interface SearchResponse {
   routes: RoutePlan[];
   total_count: number;
   total?: number;
+  data_mode?: 'mock';
+  data_notice?: string;
+  mock_source_date?: string;
 }
 
 // 城市列表响应
@@ -107,4 +110,43 @@ export interface AiSessionResponse {
 // AI 确认请求
 export interface AiConfirmRequest {
   confirmed: boolean;
+}
+
+export type SessionDuration = 'day' | 'week' | 'month' | 'half_year' | 'year' | 'forever';
+
+export interface UserProfile {
+  id: string;
+  username: string;
+  email: string;
+  nickname?: string | null;
+  avatar_url?: string | null;
+  created_at: string;
+}
+
+export interface AuthLoginRequest {
+  email: string;
+  password: string;
+  session_duration?: SessionDuration;
+}
+
+export interface AuthRegisterRequest {
+  username: string;
+  email: string;
+  password: string;
+  session_duration?: SessionDuration;
+}
+
+export interface AuthTokenResponse {
+  user: UserProfile;
+  access_token: string;
+  token_type: 'bearer';
+  expires_at: string | null;
+  session_duration: SessionDuration;
+}
+
+export interface AuthSession {
+  token: string;
+  user: UserProfile;
+  expiresAt: string | null;
+  sessionDuration: SessionDuration;
 }

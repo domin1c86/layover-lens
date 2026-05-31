@@ -20,10 +20,11 @@ interface SearchTabProps {
   loading: boolean;
   error: string;
   searched: boolean;
+  dataNotice?: string;
   onQuickSearch: (from: string, to: string) => void;
 }
 
-export default function SearchTab({ routes, loading, error, searched, onQuickSearch }: SearchTabProps) {
+export default function SearchTab({ routes, loading, error, searched, dataNotice, onQuickSearch }: SearchTabProps) {
   const { t } = useLocale();
   return (
     <div>
@@ -44,7 +45,7 @@ export default function SearchTab({ routes, loading, error, searched, onQuickSea
             </div>
           )}
 
-          <ResultList routes={routes} loading={loading} error={error} searched={searched} />
+          <ResultList routes={routes} loading={loading} error={error} searched={searched} dataNotice={dataNotice} />
 
           {!searched && !loading && (
             <div className="recommendations">

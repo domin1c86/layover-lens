@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
     user_id VARCHAR(40) NOT NULL,
     device_id VARCHAR(40) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NULL,
     revoked_at TIMESTAMP NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='登录令牌表';

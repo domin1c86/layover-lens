@@ -26,6 +26,7 @@ interface AiSearchTabProps {
 }
 
 let nextSessionId = 1;
+const AI_SEARCH_ENABLED = import.meta.env.VITE_AI_SEARCH_ENABLED === 'true';
 
 function createEmptySession(title: string = ''): Session {
   return {
@@ -153,6 +154,17 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
     const isFirstMessage = activeSession.messages.length === 0;
 
     updateActiveSession({ messages: currentMessages });
+
+    if (!AI_SEARCH_ENABLED) {
+      updateActiveSession({
+        messages: [
+          ...currentMessages,
+          { role: 'assistant', content: t('aiChat.maintenanceSubtitle') },
+        ],
+      });
+      setLoading(false);
+      return;
+    }
 
     // ── Login gate: block API calls when not logged in ──────────
     if (!isLoggedIn) {
@@ -407,6 +419,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
         onConfirm={handleConfirm}
         onReject={handleReject}
         showConfirm={activeSession.status === 'awaiting_confirmation'}
+        disabled={!AI_SEARCH_ENABLED}
       />
     </div>
   );

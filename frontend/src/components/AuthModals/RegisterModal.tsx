@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react'
 import { useLocale } from '../../context/LocaleContext'
 import { useAuth } from '../../context/AuthContext'
 import { Icon } from '../../icons'
+import { getApiErrorMessage } from '../../services/api'
+import type { SessionDuration } from '../../types'
 import './AuthModals.css'
 
 interface RegisterModalProps {
@@ -28,8 +30,35 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
+function formatDuration(duration: SessionDuration, lang: 'zh' | 'en'): string {
+  const zh: Record<SessionDuration, string> = {
+    day: '一天内有效',
+    week: '一周内有效',
+    month: '一月内有效',
+    half_year: '半年内有效',
+    year: '一年内有效',
+    forever: '长期有效',
+  }
+  const en: Record<SessionDuration, string> = {
+    day: 'valid for one day',
+    week: 'valid for one week',
+    month: 'valid for one month',
+    half_year: 'valid for six months',
+    year: 'valid for one year',
+    forever: 'valid until you sign out',
+  }
+  return lang === 'en' ? en[duration] : zh[duration]
+}
+
+function successText(duration: SessionDuration, lang: 'zh' | 'en'): string {
+  if (lang === 'en') {
+    return `Registration successful. Your session is ${formatDuration(duration, lang)}. You can change this in Settings -> Account Security -> Session duration.`
+  }
+  return `注册成功，当前登录状态将在${formatDuration(duration, lang)}。你可以前往“设置 -> 账户安全 -> 登录保持时长”修改。`
+}
+
 export default function RegisterModal({ isOpen, onClose, onSwitchToLogin, prefillEmail }: RegisterModalProps) {
-  const { t } = useLocale()
+  const { lang, t } = useLocale()
   const { register } = useAuth()
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
@@ -38,7 +67,7 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin, prefil
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState(false)
+  const [successMessage, setSuccessMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -50,18 +79,17 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin, prefil
     setShowPassword(false)
     setShowConfirmPassword(false)
     setError('')
-    setSuccess(false)
+    setSuccessMessage('')
     setLoading(false)
   }, [isOpen, prefillEmail])
 
   useEffect(() => {
-    if (success) {
-      const timer = setTimeout(() => {
-        onClose()
-      }, 1500)
-      return () => clearTimeout(timer)
-    }
-  }, [success, onClose])
+    if (!successMessage) return
+    const timer = setTimeout(() => {
+      onClose()
+    }, 4500)
+    return () => clearTimeout(timer)
+  }, [successMessage, onClose])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -80,7 +108,7 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin, prefil
     }
   }, [isOpen, handleKeyDown])
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setError('')
 
     const trimmedUsername = username.trim()
@@ -106,18 +134,18 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin, prefil
     }
 
     setLoading(true)
-    // Mock register — replace with real API call when backend is ready
-    console.log('[模拟] 注册:', { username: trimmedUsername, email: trimmedEmail, password })
-    setTimeout(() => {
-      register(trimmedEmail, trimmedUsername)
+    try {
+      const result = await register(trimmedEmail, trimmedUsername, password)
+      setSuccessMessage(successText(result.sessionDuration, lang))
+    } catch (err) {
+      setError(getApiErrorMessage(err, lang === 'en' ? 'Registration failed. Please try again.' : '注册失败，请稍后重试。'))
+    } finally {
       setLoading(false)
-      setSuccess(true)
-    }, 600)
+    }
   }
 
   const switchToLogin = () => {
     onClose()
-    // Small delay so the close animation plays before opening the login modal
     setTimeout(() => onSwitchToLogin(), 200)
   }
 
@@ -155,8 +183,8 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin, prefil
             </div>
 
             <div className="auth-modal__body">
-              {success ? (
-                <p className="auth-modal__success">{t('auth.registerSuccess')}</p>
+              {successMessage ? (
+                <p className="auth-modal__success">{successMessage}</p>
               ) : (
                 <>
                   <div className="auth-modal__field">

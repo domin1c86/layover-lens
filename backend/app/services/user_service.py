@@ -25,6 +25,7 @@ from app.schemas import (
     DeviceInfo,
     FavoriteCreateResponse,
     RoutePlan,
+    SessionDuration,
     UserPreferences,
     UserPreferencesUpdate,
     UserProfile,
@@ -34,6 +35,14 @@ from app.schemas import (
 RESET_CODE = "000000"
 RESET_CODE_TTL_SECONDS = 60
 PASSWORD_ITERATIONS = 120_000
+SESSION_DURATION_DELTAS: dict[SessionDuration, Optional[timedelta]] = {
+    "day": timedelta(days=1),
+    "week": timedelta(days=7),
+    "month": timedelta(days=30),
+    "half_year": timedelta(days=180),
+    "year": timedelta(days=365),
+    "forever": None,
+}
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -171,6 +180,7 @@ class UserService:
                 user_id VARCHAR(40) NOT NULL,
                 device_id VARCHAR(40) NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NULL,
                 revoked_at TIMESTAMP NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
@@ -257,6 +267,7 @@ class UserService:
             cursor = connection.cursor()
             for statement in statements:
                 cursor.execute(statement)
+            self._ensure_mysql_column(cursor, "auth_tokens", "expires_at", "TIMESTAMP NULL AFTER created_at")
             connection.commit()
             return True
         except Exception:
@@ -264,12 +275,20 @@ class UserService:
         finally:
             connection.close()
 
+    @staticmethod
+    def _ensure_mysql_column(cursor, table_name: str, column_name: str, column_definition: str) -> None:
+        cursor.execute(f"SHOW COLUMNS FROM {table_name} LIKE %s", (column_name,))
+        if cursor.fetchone():
+            return
+        cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}")
+
     def register(
         self,
         *,
         username: str,
         email: str,
         password: str,
+        session_duration: SessionDuration = "day",
         request: Optional[Request] = None,
     ) -> AuthTokenResponse:
         email = _normalize_email(email)
@@ -311,13 +330,20 @@ class UserService:
                 self._email_index[email] = user_id
                 self._preferences[user_id] = UserPreferences()
 
-        return self._issue_token(profile, request=request)
+        return self._issue_token(profile, session_duration=session_duration, request=request)
 
-    def login(self, *, email: str, password: str, request: Optional[Request] = None) -> AuthTokenResponse:
+    def login(
+        self,
+        *,
+        email: str,
+        password: str,
+        session_duration: SessionDuration = "day",
+        request: Optional[Request] = None,
+    ) -> AuthTokenResponse:
         profile, password_hash = self._get_user_with_password(_normalize_email(email))
         if profile is None or not _verify_password(password, password_hash or ""):
             raise UserServiceError("Invalid email or password.", status.HTTP_401_UNAUTHORIZED)
-        return self._issue_token(profile, request=request)
+        return self._issue_token(profile, session_duration=session_duration, request=request)
 
     def logout(self, token_hash: str) -> None:
         if self._mysql_available:
@@ -344,6 +370,7 @@ class UserService:
 
     def authenticate_token(self, token: str) -> AuthenticatedUser:
         token_hash = _token_hash(token)
+        now = _utcnow()
         if self._mysql_available:
             with self._connect() as connection:
                 cursor = connection.cursor(dictionary=True)
@@ -352,9 +379,11 @@ class UserService:
                     SELECT u.id, u.username, u.email, u.nickname, u.avatar_url, u.created_at
                     FROM auth_tokens t
                     JOIN users u ON u.id = t.user_id
-                    WHERE t.token_hash = %s AND t.revoked_at IS NULL
+                    WHERE t.token_hash = %s
+                      AND t.revoked_at IS NULL
+                      AND (t.expires_at IS NULL OR t.expires_at > %s)
                     """,
-                    (token_hash,),
+                    (token_hash, now),
                 )
                 row = cursor.fetchone()
             if not row:
@@ -363,7 +392,12 @@ class UserService:
 
         with self._lock:
             token_record = self._tokens.get(token_hash)
-            if not token_record or token_record.get("revoked_at") is not None:
+            expires_at = token_record.get("expires_at") if token_record else None
+            if (
+                not token_record
+                or token_record.get("revoked_at") is not None
+                or (expires_at is not None and expires_at <= now)
+            ):
                 raise UserServiceError("Invalid or expired token.", status.HTTP_401_UNAUTHORIZED)
             user_record = self._users[token_record["user_id"]]
             return AuthenticatedUser(user=user_record["profile"], token_hash=token_hash)
@@ -886,13 +920,21 @@ class UserService:
             }
         return BookingCreateResponse(booking_id=booking_id, status=status_text, redirect_url=None)
 
-    def _issue_token(self, profile: UserProfile, *, request: Optional[Request]) -> AuthTokenResponse:
+    def _issue_token(
+        self,
+        profile: UserProfile,
+        *,
+        session_duration: SessionDuration,
+        request: Optional[Request],
+    ) -> AuthTokenResponse:
         token = secrets.token_urlsafe(32)
         token_hash = _token_hash(token)
         device_id = f"device_{uuid4().hex}"
         device_name = request.headers.get("user-agent", "Unknown device")[:255] if request else "Unknown device"
         ip_address = request.client.host if request and request.client else "unknown"
         now = _utcnow()
+        delta = SESSION_DURATION_DELTAS[session_duration]
+        expires_at = now + delta if delta is not None else None
 
         if self._mysql_available:
             with self._connect() as connection:
@@ -906,10 +948,10 @@ class UserService:
                 )
                 cursor.execute(
                     """
-                    INSERT INTO auth_tokens (token_hash, user_id, device_id, created_at)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO auth_tokens (token_hash, user_id, device_id, created_at, expires_at)
+                    VALUES (%s, %s, %s, %s, %s)
                     """,
-                    (token_hash, profile.id, device_id, now),
+                    (token_hash, profile.id, device_id, now, expires_at),
                 )
                 connection.commit()
         else:
@@ -918,6 +960,7 @@ class UserService:
                     "user_id": profile.id,
                     "device_id": device_id,
                     "created_at": now,
+                    "expires_at": expires_at,
                     "revoked_at": None,
                 }
                 self._devices.setdefault(profile.id, {})[device_id] = {
@@ -930,7 +973,13 @@ class UserService:
                     "revoked_at": None,
                 }
 
-        return AuthTokenResponse(user=profile, access_token=token, token_type="bearer")
+        return AuthTokenResponse(
+            user=profile,
+            access_token=token,
+            token_type="bearer",
+            expires_at=expires_at,
+            session_duration=session_duration,
+        )
 
     def _get_user_with_password(self, email: str) -> tuple[Optional[UserProfile], Optional[str]]:
         if self._mysql_available:

@@ -39,6 +39,7 @@ def register(
             username=payload.username,
             email=payload.email,
             password=payload.password,
+            session_duration=payload.session_duration,
             request=request,
         )
     except UserServiceError as exc:
@@ -52,7 +53,12 @@ def login(
     user_service: UserService = Depends(get_user_service),
 ) -> AuthTokenResponse:
     try:
-        return user_service.login(email=payload.email, password=payload.password, request=request)
+        return user_service.login(
+            email=payload.email,
+            password=payload.password,
+            session_duration=payload.session_duration,
+            request=request,
+        )
     except UserServiceError as exc:
         _raise_http(exc)
 
@@ -105,4 +111,3 @@ def reset_password(
         return SuccessResponse(success=True)
     except UserServiceError as exc:
         _raise_http(exc)
-

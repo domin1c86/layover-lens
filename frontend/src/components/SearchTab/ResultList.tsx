@@ -11,6 +11,7 @@ interface ResultListProps {
   error: string;
   searched: boolean;
   header?: string;
+  dataNotice?: string;
 }
 
 function formatDuration(minutes: number, lang: 'zh' | 'en'): string {
@@ -143,7 +144,7 @@ function TimelineDetail({ legs, lang, t }: { legs: Leg[]; lang: 'zh' | 'en'; t: 
   );
 }
 
-export default function ResultList({ routes, loading, error, searched, header }: ResultListProps) {
+export default function ResultList({ routes, loading, error, searched, header, dataNotice }: ResultListProps) {
   const { lang, t } = useLocale();
 
   if (loading) {
@@ -179,6 +180,11 @@ export default function ResultList({ routes, loading, error, searched, header }:
   return (
     <div className="results">
       <h2 className="results-header">{header || t('resultList.resultsHeader', { count: String(routes.length) })}</h2>
+      {dataNotice && (
+        <div className="results-notice">
+          {t('resultList.mockNotice')}
+        </div>
+      )}
       <div className="results-list">
         {routes.map((route, idx) => (
           <RouteCard key={route.id} route={route} index={idx} lang={lang} t={t} />

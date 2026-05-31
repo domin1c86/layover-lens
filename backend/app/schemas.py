@@ -129,6 +129,9 @@ class SearchResponse(BaseModel):
     routes: list[RoutePlan]
     total_count: int
     total: int
+    data_mode: Literal["mock"] = "mock"
+    data_notice: Optional[str] = None
+    mock_source_date: Optional[str] = None
 
 
 class ParsedSearchRequest(BaseModel):
@@ -203,21 +206,28 @@ class UserProfile(BaseModel):
     created_at: datetime
 
 
+SessionDuration = Literal["day", "week", "month", "half_year", "year", "forever"]
+
+
 class AuthLoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=1, max_length=255)
+    session_duration: SessionDuration = "day"
 
 
 class AuthRegisterRequest(BaseModel):
     username: str = Field(min_length=1, max_length=80)
     email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=6, max_length=255)
+    session_duration: SessionDuration = "day"
 
 
 class AuthTokenResponse(BaseModel):
     user: UserProfile
     access_token: str
     token_type: Literal["bearer"] = "bearer"
+    expires_at: Optional[datetime] = None
+    session_duration: SessionDuration = "day"
 
 
 class SuccessResponse(BaseModel):

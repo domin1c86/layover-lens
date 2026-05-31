@@ -1,3 +1,6 @@
+from datetime import datetime, timedelta
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from app.data_source import reset_data_source_cache
@@ -12,7 +15,12 @@ def _fresh_client() -> TestClient:
     return TestClient(app)
 
 
-def _register(client: TestClient, email: str = "user@example.com") -> tuple[dict, dict]:
+def _unique_email(prefix: str = "user") -> str:
+    return f"{prefix}-{uuid4().hex[:10]}@example.com"
+
+
+def _register(client: TestClient, email: str | None = None) -> tuple[dict, dict]:
+    email = email or _unique_email()
     response = client.post(
         "/api/v1/auth/register",
         json={"username": "tester", "email": email, "password": "secret123"},
@@ -20,6 +28,10 @@ def _register(client: TestClient, email: str = "user@example.com") -> tuple[dict
     assert response.status_code == 200
     payload = response.json()
     return payload, {"Authorization": f"Bearer {payload['access_token']}"}
+
+
+def _parse_datetime(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
 
 
 def _route_payload() -> dict:
@@ -57,7 +69,11 @@ def test_auth_profile_and_logout_flow() -> None:
     client = _fresh_client()
     payload, headers = _register(client)
 
-    assert payload["user"]["email"] == "user@example.com"
+    assert payload["user"]["email"].endswith("@example.com")
+    assert payload["session_duration"] == "day"
+    expires_at = _parse_datetime(payload["expires_at"])
+    created_at = _parse_datetime(payload["user"]["created_at"])
+    assert timedelta(hours=23, minutes=59) <= expires_at - created_at <= timedelta(days=1, minutes=1)
     profile_response = client.get("/api/v1/user/profile", headers=headers)
     assert profile_response.status_code == 200
     assert profile_response.json()["username"] == "tester"
@@ -65,7 +81,7 @@ def test_auth_profile_and_logout_flow() -> None:
     assert client.get("/api/v1/user/profile").status_code == 401
     assert client.post(
         "/api/v1/auth/register",
-        json={"username": "dupe", "email": "user@example.com", "password": "secret123"},
+        json={"username": "dupe", "email": payload["user"]["email"], "password": "secret123"},
     ).status_code == 409
 
     logout_response = client.post("/api/v1/auth/logout", headers=headers)
@@ -73,24 +89,71 @@ def test_auth_profile_and_logout_flow() -> None:
     assert client.get("/api/v1/user/profile", headers=headers).status_code == 401
 
 
+def test_auth_session_duration_options() -> None:
+    client = _fresh_client()
+    email = _unique_email("duration")
+    _register(client, email)
+
+    expected_deltas = {
+        "day": timedelta(days=1),
+        "week": timedelta(days=7),
+        "month": timedelta(days=30),
+        "half_year": timedelta(days=180),
+        "year": timedelta(days=365),
+    }
+    for duration, expected_delta in expected_deltas.items():
+        before = datetime.utcnow()
+        response = client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": "secret123", "session_duration": duration},
+        )
+        after = datetime.utcnow()
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["session_duration"] == duration
+        expires_at = _parse_datetime(payload["expires_at"])
+        assert before + expected_delta <= expires_at <= after + expected_delta + timedelta(seconds=2)
+
+    forever_response = client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": "secret123", "session_duration": "forever"},
+    )
+    assert forever_response.status_code == 200
+    assert forever_response.json()["session_duration"] == "forever"
+    assert forever_response.json()["expires_at"] is None
+
+
+def test_expired_auth_token_is_rejected(monkeypatch) -> None:
+    from app.services import user_service as user_service_module
+
+    base_time = datetime(2026, 1, 1, 12, 0, 0)
+    monkeypatch.setattr(user_service_module, "_utcnow", lambda: base_time)
+    client = _fresh_client()
+    _, headers = _register(client, _unique_email("expired"))
+
+    monkeypatch.setattr(user_service_module, "_utcnow", lambda: base_time + timedelta(days=1, seconds=1))
+    assert client.get("/api/v1/user/profile", headers=headers).status_code == 401
+
+
 def test_password_reset_preferences_and_import_platforms() -> None:
     client = _fresh_client()
-    _, headers = _register(client, "prefs@example.com")
+    email = _unique_email("prefs")
+    _, headers = _register(client, email)
 
     assert client.post(
         "/api/v1/auth/forgot-password/check-email",
-        json={"email": "prefs@example.com"},
+        json={"email": email},
     ).json() == {"registered": True}
     send_response = client.post(
         "/api/v1/auth/forgot-password/send-code",
-        json={"email": "prefs@example.com"},
+        json={"email": email},
     )
     assert send_response.status_code == 200
     assert send_response.json()["expires_in_seconds"] == 60
 
     verify_response = client.post(
         "/api/v1/auth/forgot-password/verify-code",
-        json={"email": "prefs@example.com", "code": "000000"},
+        json={"email": email, "code": "000000"},
     )
     assert verify_response.status_code == 200
     reset_token = verify_response.json()["reset_token"]
@@ -102,7 +165,7 @@ def test_password_reset_preferences_and_import_platforms() -> None:
     assert reset_response.status_code == 200
     assert client.post(
         "/api/v1/auth/login",
-        json={"email": "prefs@example.com", "password": "newsecret123"},
+        json={"email": email, "password": "newsecret123"},
     ).status_code == 200
 
     preferences = client.put(
@@ -139,10 +202,11 @@ def test_favorites_devices_bookings_and_ai_session_metadata(monkeypatch) -> None
     monkeypatch.setattr("app.services.ai_agent.DeepSeekChatClient.respond", fake_respond)
 
     client = _fresh_client()
-    _, first_headers = _register(client, "full@example.com")
+    email = _unique_email("full")
+    _, first_headers = _register(client, email)
     login_payload = client.post(
         "/api/v1/auth/login",
-        json={"email": "full@example.com", "password": "secret123"},
+        json={"email": email, "password": "secret123"},
     ).json()
     second_headers = {"Authorization": f"Bearer {login_payload['access_token']}"}
 
@@ -204,4 +268,3 @@ def test_favorites_devices_bookings_and_ai_session_metadata(monkeypatch) -> None
         f"/api/v1/search/ai/sessions/{session_id}",
         headers=second_headers,
     ).status_code == 200
-
