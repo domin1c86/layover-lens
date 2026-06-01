@@ -9,6 +9,12 @@ import type {
   AuthLoginRequest,
   AuthRegisterRequest,
   AuthTokenResponse,
+  EmailVerificationPurpose,
+  EmailVerificationSendResponse,
+  EmailVerificationVerifyResponse,
+  ForgotPasswordCheckEmailResponse,
+  ForgotPasswordSendCodeResponse,
+  ForgotPasswordVerifyCodeResponse,
   UserProfile,
 } from '../types';
 import { clearAuthSession, getStoredAuthToken } from './authStorage';
@@ -78,6 +84,94 @@ export const authApi = {
   getProfile: async (): Promise<UserProfile> => {
     const response = await apiClient.get<UserProfile>('/user/profile');
     return response.data;
+  },
+
+  checkForgotPasswordEmail: async (email: string): Promise<ForgotPasswordCheckEmailResponse> => {
+    const response = await apiClient.post<ForgotPasswordCheckEmailResponse>(
+      '/auth/forgot-password/check-email',
+      { email }
+    );
+    return response.data;
+  },
+
+  sendForgotPasswordCode: async (email: string): Promise<ForgotPasswordSendCodeResponse> => {
+    const response = await apiClient.post<ForgotPasswordSendCodeResponse>(
+      '/auth/forgot-password/send-code',
+      { email }
+    );
+    return response.data;
+  },
+
+  verifyForgotPasswordCode: async (email: string, code: string): Promise<ForgotPasswordVerifyCodeResponse> => {
+    const response = await apiClient.post<ForgotPasswordVerifyCodeResponse>(
+      '/auth/forgot-password/verify-code',
+      { email, code }
+    );
+    return response.data;
+  },
+
+  resetForgotPassword: async (resetToken: string, newPassword: string): Promise<void> => {
+    await apiClient.post('/auth/forgot-password/reset', {
+      reset_token: resetToken,
+      new_password: newPassword,
+    });
+  },
+
+  sendEmailVerificationCode: async (
+    email: string,
+    purpose: EmailVerificationPurpose
+  ): Promise<EmailVerificationSendResponse> => {
+    const response = await apiClient.post<EmailVerificationSendResponse>(
+      '/auth/email-verification/send',
+      { email, purpose }
+    );
+    return response.data;
+  },
+
+  verifyEmailVerificationCode: async (
+    email: string,
+    code: string,
+    purpose: EmailVerificationPurpose
+  ): Promise<EmailVerificationVerifyResponse> => {
+    const response = await apiClient.post<EmailVerificationVerifyResponse>(
+      '/auth/email-verification/verify',
+      { email, code, purpose }
+    );
+    return response.data;
+  },
+
+  verifyCurrentEmail: async (verificationToken: string): Promise<UserProfile> => {
+    const response = await apiClient.post<UserProfile>('/user/email/verify', {
+      verification_token: verificationToken,
+    });
+    return response.data;
+  },
+
+  updateEmail: async (
+    currentEmail: string,
+    newEmail: string,
+    verificationToken: string
+  ): Promise<UserProfile> => {
+    const response = await apiClient.put<UserProfile>('/user/email', {
+      current_email: currentEmail,
+      new_email: newEmail,
+      verification_token: verificationToken,
+    });
+    return response.data;
+  },
+
+  checkPassword: async (currentPassword: string): Promise<boolean> => {
+    const response = await apiClient.post<{ valid: boolean }>('/user/password/check', {
+      current_password: currentPassword,
+    });
+    return response.data.valid;
+  },
+
+  updatePassword: async (currentPassword: string, newPassword: string): Promise<void> => {
+    await apiClient.put('/user/password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
   },
 };
 

@@ -91,6 +91,42 @@
   padding-right: 40px;
 }
 
+.auth-modal__code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.auth-modal__code-btn {
+  white-space: nowrap;
+}
+
+.auth-modal__code-status {
+  position: absolute;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.auth-modal__code-status.valid {
+  color: #008a05;
+}
+
+.auth-modal__code-status.invalid {
+  color: #c13515;
+}
+
+.auth-modal__code-status.pending {
+  color: #b26a00;
+}
+
 .auth-modal__toggle-pw {
   position: absolute;
   right: 8px;
@@ -215,6 +251,10 @@ html[data-theme="dark"] .auth-modal__switch-text {
   .auth-modal__overlay {
     padding: 16px;
     align-items: flex-end;
+  }
+
+  .auth-modal__code-row {
+    grid-template-columns: 1fr;
   }
 
   .auth-modal__dialog {

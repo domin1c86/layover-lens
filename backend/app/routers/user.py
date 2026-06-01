@@ -13,6 +13,9 @@ from app.schemas import (
     ImportPlatformsResponse,
     SuccessResponse,
     UserEmailUpdateRequest,
+    UserEmailVerifyRequest,
+    UserPasswordCheckRequest,
+    UserPasswordCheckResponse,
     UserPasswordUpdateRequest,
     UserPreferences,
     UserPreferencesUpdate,
@@ -124,10 +127,37 @@ def update_email(
         return user_service.update_email(
             current_user.user.id,
             new_email=payload.new_email,
-            code=payload.code,
+            current_email=payload.current_email,
+            verification_token=payload.verification_token,
         )
     except UserServiceError as exc:
         _raise_http(exc)
+
+
+@router.post("/email/verify", response_model=UserProfile)
+def verify_email(
+    payload: UserEmailVerifyRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    user_service: UserService = Depends(get_user_service),
+) -> UserProfile:
+    try:
+        return user_service.verify_current_email(
+            current_user.user.id,
+            verification_token=payload.verification_token,
+        )
+    except UserServiceError as exc:
+        _raise_http(exc)
+
+
+@router.post("/password/check", response_model=UserPasswordCheckResponse)
+def check_password(
+    payload: UserPasswordCheckRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    user_service: UserService = Depends(get_user_service),
+) -> UserPasswordCheckResponse:
+    return UserPasswordCheckResponse(
+        valid=user_service.check_password(current_user.user.id, payload.current_password)
+    )
 
 
 @router.put("/password", response_model=SuccessResponse)

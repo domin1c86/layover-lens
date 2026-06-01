@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useLocale } from '../../../context/LocaleContext'
 import { useAuth } from '../../../context/AuthContext'
 import { getApiErrorMessage } from '../../../services/api'
+import AnimatedModal from '../../common/AnimatedModal'
 
 type DeleteStep = 1 | 2
 
@@ -124,9 +125,13 @@ export default function AccountPanel() {
         </button>
       </div>
 
-      {deleteStep && (
-        <div className="account-delete-modal__overlay" role="dialog" aria-modal="true" aria-label={dialogTitle}>
-          <div className="account-delete-modal__dialog">
+      <AnimatedModal
+        isOpen={deleteStep !== null}
+        overlayClassName="account-delete-modal__overlay"
+        dialogClassName="account-delete-modal__dialog"
+        ariaLabel={dialogTitle}
+        onClose={closeDeleteDialog}
+      >
             <h3 className="account-delete-modal__title">{dialogTitle}</h3>
             <p className="account-delete-modal__message">{dialogMessage}</p>
             {deleteError && <p className="account-delete-modal__error">{deleteError}</p>}
@@ -148,9 +153,7 @@ export default function AccountPanel() {
                 {deleteLoading ? '...' : isEnglish ? 'Confirm' : '确认'}
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </AnimatedModal>
     </div>
   )
 }

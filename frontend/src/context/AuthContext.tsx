@@ -24,7 +24,7 @@ interface AuthContextType {
   loading: boolean
   sessionDuration: SessionDuration
   login: (email: string, password: string) => Promise<AuthSuccess>
-  register: (email: string, username: string, password: string) => Promise<AuthSuccess>
+  register: (email: string, username: string, password: string, emailVerificationToken: string) => Promise<AuthSuccess>
   logout: () => Promise<void>
   deleteAccount: () => Promise<void>
   refreshUser: () => Promise<void>
@@ -116,13 +116,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const register = useCallback(
-    async (email: string, username: string, password: string): Promise<AuthSuccess> => {
+    async (email: string, username: string, password: string, emailVerificationToken: string): Promise<AuthSuccess> => {
       setLoading(true)
       try {
         const response = await authApi.register({
           email,
           username,
           password,
+          email_verification_token: emailVerificationToken,
           session_duration: sessionDuration,
         })
         return persistAuth(toAuthSession(response))

@@ -19,11 +19,34 @@ def _unique_email(prefix: str = "user") -> str:
     return f"{prefix}-{uuid4().hex[:10]}@example.com"
 
 
+def _email_verification_token(client: TestClient, email: str, purpose: str = "register") -> str:
+    send_response = client.post(
+        "/api/v1/auth/email-verification/send",
+        json={"email": email, "purpose": purpose},
+    )
+    assert send_response.status_code == 200
+    assert send_response.json()["expires_in_seconds"] == 60
+    verify_response = client.post(
+        "/api/v1/auth/email-verification/verify",
+        json={"email": email, "purpose": purpose, "code": "000000"},
+    )
+    assert verify_response.status_code == 200
+    token = verify_response.json()["verification_token"]
+    assert token
+    return token
+
+
 def _register(client: TestClient, email: str | None = None) -> tuple[dict, dict]:
     email = email or _unique_email()
+    verification_token = _email_verification_token(client, email)
     response = client.post(
         "/api/v1/auth/register",
-        json={"username": "tester", "email": email, "password": "secret123"},
+        json={
+            "username": "tester",
+            "email": email,
+            "password": "secret123",
+            "email_verification_token": verification_token,
+        },
     )
     assert response.status_code == 200
     payload = response.json()
@@ -70,6 +93,7 @@ def test_auth_profile_and_logout_flow() -> None:
     payload, headers = _register(client)
 
     assert payload["user"]["email"].endswith("@example.com")
+    assert payload["user"]["email_verified"] is True
     assert payload["session_duration"] == "day"
     expires_at = _parse_datetime(payload["expires_at"])
     created_at = _parse_datetime(payload["user"]["created_at"])
@@ -77,11 +101,16 @@ def test_auth_profile_and_logout_flow() -> None:
     profile_response = client.get("/api/v1/user/profile", headers=headers)
     assert profile_response.status_code == 200
     assert profile_response.json()["username"] == "tester"
+    assert profile_response.json()["email_verified"] is True
 
     assert client.get("/api/v1/user/profile").status_code == 401
     assert client.post(
         "/api/v1/auth/register",
         json={"username": "dupe", "email": payload["user"]["email"], "password": "secret123"},
+    ).status_code == 422
+    assert client.post(
+        "/api/v1/auth/email-verification/send",
+        json={"email": payload["user"]["email"], "purpose": "register"},
     ).status_code == 409
 
     logout_response = client.post("/api/v1/auth/logout", headers=headers)
@@ -148,6 +177,74 @@ def test_delete_account_removes_user_and_invalidates_token() -> None:
         "/api/v1/auth/login",
         json={"email": email, "password": "secret123"},
     ).status_code == 401
+
+
+def test_email_verification_change_email_and_password_check() -> None:
+    client = _fresh_client()
+    email = _unique_email("security")
+    _, headers = _register(client, email)
+
+    current_token = _email_verification_token(client, email, "verify_current")
+    verify_current = client.post(
+        "/api/v1/user/email/verify",
+        headers=headers,
+        json={"verification_token": current_token},
+    )
+    assert verify_current.status_code == 200
+    assert verify_current.json()["email_verified"] is True
+
+    assert client.post(
+        "/api/v1/user/password/check",
+        headers=headers,
+        json={"current_password": "wrong"},
+    ).json() == {"valid": False}
+    assert client.post(
+        "/api/v1/user/password/check",
+        headers=headers,
+        json={"current_password": "secret123"},
+    ).json() == {"valid": True}
+
+    new_email = _unique_email("changed")
+    change_token = _email_verification_token(client, new_email, "change_email")
+    bad_update = client.put(
+        "/api/v1/user/email",
+        headers=headers,
+        json={
+            "current_email": "wrong@example.com",
+            "new_email": new_email,
+            "verification_token": change_token,
+        },
+    )
+    assert bad_update.status_code == 400
+
+    change_token = _email_verification_token(client, new_email, "change_email")
+    update = client.put(
+        "/api/v1/user/email",
+        headers=headers,
+        json={
+            "current_email": email,
+            "new_email": new_email,
+            "verification_token": change_token,
+        },
+    )
+    assert update.status_code == 200
+    assert update.json()["email"] == new_email
+    assert update.json()["email_verified"] is True
+
+    assert client.put(
+        "/api/v1/user/password",
+        headers=headers,
+        json={"current_password": "wrong", "new_password": "nextsecret123"},
+    ).status_code == 400
+    assert client.put(
+        "/api/v1/user/password",
+        headers=headers,
+        json={"current_password": "secret123", "new_password": "nextsecret123"},
+    ).status_code == 200
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": new_email, "password": "nextsecret123"},
+    ).status_code == 200
 
 
 def test_password_reset_preferences_and_import_platforms() -> None:

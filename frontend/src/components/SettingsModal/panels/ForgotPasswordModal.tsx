@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useLocale } from '../../../context/LocaleContext'
 import { Icon } from '../../../icons'
+import { authApi, getApiErrorMessage } from '../../../services/api'
+import AnimatedModal from '../../common/AnimatedModal'
 
 type Step = 'email' | 'verify' | 'reset' | 'success'
 
@@ -11,38 +13,31 @@ interface Props {
   maskedEmail: string
 }
 
-function generateCode() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-  let code = ''
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)]
-  }
-  return code
-}
-
 export default function ForgotPasswordModal({ isOpen, onClose, userEmail, maskedEmail }: Props) {
-  const { t } = useLocale()
+  const { lang, t } = useLocale()
   const [step, setStep] = useState<Step>('email')
   const [emailInput, setEmailInput] = useState('')
   const [codeInput, setCodeInput] = useState('')
+  const [resetToken, setResetToken] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
-  const [code, setCode] = useState('')
-  const [codeTime, setCodeTime] = useState(0)
   const [countdown, setCountdown] = useState(0)
+  const [loading, setLoading] = useState(false)
+
+  const isEnglish = lang === 'en'
 
   useEffect(() => {
     if (!isOpen) return
     setStep('email')
     setEmailInput('')
     setCodeInput('')
+    setResetToken('')
     setNewPassword('')
     setConfirmPassword('')
     setError('')
-    setCode('')
-    setCodeTime(0)
     setCountdown(0)
+    setLoading(false)
   }, [isOpen])
 
   useEffect(() => {
@@ -52,76 +47,110 @@ export default function ForgotPasswordModal({ isOpen, onClose, userEmail, masked
   }, [countdown])
 
   useEffect(() => {
-    if (step === 'success') {
-      const timer = setTimeout(() => onClose(), 3000)
-      return () => clearTimeout(timer)
-    }
+    if (step !== 'success') return
+    const timer = setTimeout(() => onClose(), 3000)
+    return () => clearTimeout(timer)
   }, [step, onClose])
 
-  const sendCode = () => {
-    const newCode = generateCode()
-    setCode(newCode)
-    setCodeTime(Date.now())
-    setCountdown(60)
+  const sendCode = async () => {
+    const response = await authApi.sendForgotPasswordCode(userEmail)
+    setCountdown(response.expires_in_seconds)
     setError('')
-    console.log('[模拟] 验证码已发送至邮箱:', userEmail, '验证码:', newCode)
   }
 
-  const handleEmailSubmit = () => {
+  const handleEmailSubmit = async () => {
     const trimmed = emailInput.trim()
     if (!trimmed) {
-      setError(t('settings.forgotPassword.emailEmpty') || '请输入内容')
+      setError(t('settings.forgotPassword.emailEmpty'))
       return
     }
     if (trimmed.toLowerCase() !== userEmail.toLowerCase()) {
-      setError(t('settings.forgotPassword.emailMismatch') || '邮箱地址错误')
+      setError(t('settings.forgotPassword.emailMismatch'))
       return
     }
-    sendCode()
-    setStep('verify')
+
+    setLoading(true)
+    try {
+      await sendCode()
+      setStep('verify')
+    } catch (err) {
+      setError(getApiErrorMessage(err, isEnglish ? 'Unable to send verification code.' : '验证码发送失败，请稍后重试。'))
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleVerifySubmit = () => {
-    if (Date.now() - codeTime > 60000) {
-      setError(t('settings.forgotPassword.codeExpired') || '验证码已过期')
+  const handleVerifySubmit = async () => {
+    const code = codeInput.trim()
+    if (!code) {
+      setError(t('settings.forgotPassword.codeMismatch'))
       return
     }
-    if (codeInput.trim().toUpperCase() !== code) {
-      setError(t('settings.forgotPassword.codeMismatch') || '验证码不匹配')
-      return
-    }
+
+    setLoading(true)
     setError('')
-    setStep('reset')
+    try {
+      const result = await authApi.verifyForgotPasswordCode(userEmail, code)
+      if (!result.verified || !result.reset_token) {
+        setError(t('settings.forgotPassword.codeMismatch'))
+        return
+      }
+      setResetToken(result.reset_token)
+      setStep('reset')
+    } catch (err) {
+      setError(getApiErrorMessage(err, isEnglish ? 'Verification failed.' : '验证码验证失败，请稍后重试。'))
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleResend = () => {
-    sendCode()
+  const handleResend = async () => {
+    setLoading(true)
+    try {
+      await sendCode()
+    } catch (err) {
+      setError(getApiErrorMessage(err, isEnglish ? 'Unable to resend verification code.' : '重新发送失败，请稍后重试。'))
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleResetSubmit = () => {
+  const handleResetSubmit = async () => {
     if (newPassword !== confirmPassword) {
-      setError(t('settings.forgotPassword.passwordMismatch') || '两次输入的密码不一致')
+      setError(t('settings.forgotPassword.passwordMismatch'))
       return
     }
     if (newPassword.length < 6) {
-      setError(t('settings.forgotPassword.passwordTooShort') || '密码长度至少为6位')
+      setError(t('settings.forgotPassword.passwordTooShort'))
       return
     }
+
+    setLoading(true)
     setError('')
-    setStep('success')
+    try {
+      await authApi.resetForgotPassword(resetToken, newPassword)
+      setStep('success')
+    } catch (err) {
+      setError(getApiErrorMessage(err, isEnglish ? 'Password reset failed.' : '密码重置失败，请稍后重试。'))
+    } finally {
+      setLoading(false)
+    }
   }
 
-  if (!isOpen) return null
-
   return (
-    <div className="forgot-modal__overlay" onClick={onClose}>
-      <div className="forgot-modal__dialog" onClick={(e) => e.stopPropagation()}>
+    <AnimatedModal
+      isOpen={isOpen}
+      overlayClassName="forgot-modal__overlay"
+      dialogClassName="forgot-modal__dialog"
+      ariaLabel={t('settings.forgotPassword.titleEmail')}
+      onClose={onClose}
+    >
         <div className="forgot-modal__header">
           <h3 className="forgot-modal__title">
-            {step === 'email' && (t('settings.forgotPassword.titleEmail') || '验证邮箱')}
-            {step === 'verify' && (t('settings.forgotPassword.titleVerify') || '输入验证码')}
-            {step === 'reset' && (t('settings.forgotPassword.titleReset') || '重置密码')}
-            {step === 'success' && (t('settings.forgotPassword.titleSuccess') || '重置成功')}
+            {step === 'email' && t('settings.forgotPassword.titleEmail')}
+            {step === 'verify' && t('settings.forgotPassword.titleVerify')}
+            {step === 'reset' && t('settings.forgotPassword.titleReset')}
+            {step === 'success' && t('settings.forgotPassword.titleSuccess')}
           </h3>
           <button className="forgot-modal__close" onClick={onClose} type="button" aria-label="Close">
             <Icon name="actions.closeEmoji" />
@@ -132,18 +161,23 @@ export default function ForgotPasswordModal({ isOpen, onClose, userEmail, masked
           {step === 'email' && (
             <>
               <p className="forgot-modal__desc">
-                {(t('settings.forgotPassword.emailDesc') || '输入完整 {{email}} 邮箱地址以继续').replace('{{email}}', maskedEmail)}
+                {t('settings.forgotPassword.emailDesc').replace('{{email}}', maskedEmail)}
               </p>
               <input
                 className="settings-panel__input"
                 type="email"
                 value={emailInput}
                 onChange={(e) => { setEmailInput(e.target.value); setError('') }}
-                placeholder={t('settings.security.email') || '邮箱'}
+                placeholder={t('settings.security.email')}
               />
               {error && <p className="forgot-modal__error">{error}</p>}
-              <button className="settings-panel__btn settings-panel__btn--primary" onClick={handleEmailSubmit} type="button">
-                {t('settings.forgotPassword.sendCode') || '发送验证码'}
+              <button
+                className="settings-panel__btn settings-panel__btn--primary"
+                onClick={handleEmailSubmit}
+                type="button"
+                disabled={loading}
+              >
+                {loading ? '...' : t('settings.forgotPassword.sendCode')}
               </button>
             </>
           )}
@@ -151,30 +185,38 @@ export default function ForgotPasswordModal({ isOpen, onClose, userEmail, masked
           {step === 'verify' && (
             <>
               <p className="forgot-modal__desc">
-                {(t('settings.forgotPassword.verifyDesc') || '验证码已发送至 {{email}}').replace('{{email}}', userEmail)}
+                {t('settings.forgotPassword.verifyDesc').replace('{{email}}', userEmail)}
+              </p>
+              <p className="settings-panel__hint" style={{ margin: 0 }}>
+                {isEnglish ? 'Beta code: 000000' : '内测验证码：000000'}
               </p>
               <input
                 className="settings-panel__input"
                 type="text"
                 value={codeInput}
                 onChange={(e) => { setCodeInput(e.target.value); setError('') }}
-                placeholder={t('settings.forgotPassword.codePlaceholder') || '请输入6位验证码'}
-                maxLength={6}
+                placeholder={t('settings.forgotPassword.codePlaceholder')}
+                maxLength={12}
               />
               {error && <p className="forgot-modal__error">{error}</p>}
               <div className="forgot-modal__actions">
-                <button className="settings-panel__btn settings-panel__btn--primary" onClick={handleVerifySubmit} type="button">
-                  {t('settings.security.confirm') || '确认'}
+                <button
+                  className="settings-panel__btn settings-panel__btn--primary"
+                  onClick={handleVerifySubmit}
+                  type="button"
+                  disabled={loading}
+                >
+                  {loading ? '...' : t('settings.security.confirm')}
                 </button>
                 <button
                   className="settings-panel__btn settings-panel__btn--gray"
                   onClick={handleResend}
                   type="button"
-                  disabled={countdown > 0}
+                  disabled={loading || countdown > 0}
                 >
                   {countdown > 0
-                    ? `${t('settings.forgotPassword.resend') || '重新发送'} (${countdown}s)`
-                    : t('settings.forgotPassword.resend') || '重新发送'}
+                    ? `${t('settings.forgotPassword.resend')} (${countdown}s)`
+                    : t('settings.forgotPassword.resend')}
                 </button>
               </div>
             </>
@@ -187,29 +229,33 @@ export default function ForgotPasswordModal({ isOpen, onClose, userEmail, masked
                 type="password"
                 value={newPassword}
                 onChange={(e) => { setNewPassword(e.target.value); setError('') }}
-                placeholder={t('settings.forgotPassword.newPassword') || '新密码'}
+                placeholder={t('settings.forgotPassword.newPassword')}
+                autoComplete="new-password"
               />
               <input
                 className="settings-panel__input"
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => { setConfirmPassword(e.target.value); setError('') }}
-                placeholder={t('settings.forgotPassword.confirmPassword') || '确认密码'}
+                placeholder={t('settings.forgotPassword.confirmPassword')}
+                autoComplete="new-password"
               />
               {error && <p className="forgot-modal__error">{error}</p>}
-              <button className="settings-panel__btn settings-panel__btn--primary" onClick={handleResetSubmit} type="button">
-                {t('settings.security.confirm') || '确认'}
+              <button
+                className="settings-panel__btn settings-panel__btn--primary"
+                onClick={handleResetSubmit}
+                type="button"
+                disabled={loading}
+              >
+                {loading ? '...' : t('settings.security.confirm')}
               </button>
             </>
           )}
 
           {step === 'success' && (
-            <>
-              <p className="forgot-modal__success">{t('settings.forgotPassword.successMessage') || '密码重置成功，3秒后自动关闭'}</p>
-            </>
+            <p className="forgot-modal__success">{t('settings.forgotPassword.successMessage')}</p>
           )}
         </div>
-      </div>
-    </div>
+    </AnimatedModal>
   )
 }

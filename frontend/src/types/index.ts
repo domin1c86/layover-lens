@@ -118,6 +118,7 @@ export interface UserProfile {
   id: string;
   username: string;
   email: string;
+  email_verified: boolean;
   nickname?: string | null;
   avatar_url?: string | null;
   created_at: string;
@@ -133,6 +134,7 @@ export interface AuthRegisterRequest {
   username: string;
   email: string;
   password: string;
+  email_verification_token: string;
   session_duration?: SessionDuration;
 }
 
@@ -149,4 +151,28 @@ export interface AuthSession {
   user: UserProfile;
   expiresAt: string | null;
   sessionDuration: SessionDuration;
+}
+
+export interface ForgotPasswordCheckEmailResponse {
+  registered: boolean;
+}
+
+export interface ForgotPasswordSendCodeResponse {
+  expires_in_seconds: number;
+}
+
+export interface ForgotPasswordVerifyCodeResponse {
+  verified: boolean;
+  reset_token: string | null;
+}
+
+export type EmailVerificationPurpose = 'register' | 'verify_current' | 'change_email';
+
+export interface EmailVerificationSendResponse {
+  expires_in_seconds: number;
+}
+
+export interface EmailVerificationVerifyResponse {
+  verified: boolean;
+  verification_token: string | null;
 }
