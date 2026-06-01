@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     register: vi.fn(),
     login: vi.fn(),
     logout: vi.fn(),
+    deleteAccount: vi.fn(),
     getProfile: vi.fn(),
   },
 }))
@@ -41,6 +42,7 @@ describe('AuthContext', () => {
     localStorage.clear()
     vi.clearAllMocks()
     mocks.authApi.logout.mockResolvedValue(undefined)
+    mocks.authApi.deleteAccount.mockResolvedValue(undefined)
     mocks.authApi.getProfile.mockResolvedValue(profile)
   })
 
@@ -91,6 +93,20 @@ describe('AuthContext', () => {
     })
 
     expect(mocks.authApi.logout).toHaveBeenCalledOnce()
+    expect(result.current.user).toBeNull()
+    expect(getStoredAuthSession()).toBeNull()
+  })
+
+  it('deletes the account and clears local auth state', async () => {
+    mocks.authApi.login.mockResolvedValue(tokenResponse('day'))
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+
+    await act(async () => {
+      await result.current.login('tester@example.com', 'secret123')
+      await result.current.deleteAccount()
+    })
+
+    expect(mocks.authApi.deleteAccount).toHaveBeenCalledOnce()
     expect(result.current.user).toBeNull()
     expect(getStoredAuthSession()).toBeNull()
   })

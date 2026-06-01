@@ -51,6 +51,18 @@ def update_profile(
         _raise_http(exc)
 
 
+@router.delete("/account", response_model=SuccessResponse)
+def delete_account(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    user_service: UserService = Depends(get_user_service),
+) -> SuccessResponse:
+    try:
+        user_service.delete_account(current_user.user.id)
+        return SuccessResponse(success=True)
+    except UserServiceError as exc:
+        _raise_http(exc)
+
+
 @router.post("/avatar", response_model=AvatarResponse)
 async def upload_avatar(
     request: Request,

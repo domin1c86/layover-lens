@@ -26,6 +26,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<AuthSuccess>
   register: (email: string, username: string, password: string) => Promise<AuthSuccess>
   logout: () => Promise<void>
+  deleteAccount: () => Promise<void>
   refreshUser: () => Promise<void>
   setSessionDuration: (duration: SessionDuration) => void
 }
@@ -143,6 +144,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const deleteAccount = useCallback(async () => {
+    setLoading(true)
+    try {
+      await authApi.deleteAccount()
+      clearAuthSession()
+      setUser(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   const setSessionDuration = useCallback((duration: SessionDuration) => {
     setStoredSessionDuration(duration)
     setSessionDurationState(duration)
@@ -157,10 +169,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       register,
       logout,
+      deleteAccount,
       refreshUser,
       setSessionDuration,
     }),
-    [user, loading, sessionDuration, login, register, logout, refreshUser, setSessionDuration]
+    [user, loading, sessionDuration, login, register, logout, deleteAccount, refreshUser, setSessionDuration]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

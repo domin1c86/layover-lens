@@ -135,6 +135,21 @@ def test_expired_auth_token_is_rejected(monkeypatch) -> None:
     assert client.get("/api/v1/user/profile", headers=headers).status_code == 401
 
 
+def test_delete_account_removes_user_and_invalidates_token() -> None:
+    client = _fresh_client()
+    email = _unique_email("delete")
+    _, headers = _register(client, email)
+
+    response = client.delete("/api/v1/user/account", headers=headers)
+    assert response.status_code == 200
+    assert response.json() == {"success": True}
+    assert client.get("/api/v1/user/profile", headers=headers).status_code == 401
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": "secret123"},
+    ).status_code == 401
+
+
 def test_password_reset_preferences_and_import_platforms() -> None:
     client = _fresh_client()
     email = _unique_email("prefs")

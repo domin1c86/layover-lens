@@ -164,6 +164,11 @@
   margin-bottom: 24px;
 }
 
+.settings-panel__danger-zone {
+  border-top: 1px solid #ebebeb;
+  padding-top: 24px;
+}
+
 .settings-panel__label {
   font-family: var(--font-family);
   font-size: 14px;
@@ -685,4 +690,54 @@
 
 .forgot-modal__body .settings-panel__btn--primary:hover {
   background: #b5644a;
+}
+
+.account-delete-modal__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.52);
+}
+
+.account-delete-modal__dialog {
+  width: 100%;
+  max-width: 420px;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: rgba(0, 0, 0, 0.1) 0 6px 20px;
+  padding: 24px;
+}
+
+.account-delete-modal__title {
+  margin: 0 0 10px 0;
+  font-family: var(--font-family);
+  font-size: 18px;
+  font-weight: 600;
+  color: #222222;
+}
+
+.account-delete-modal__message {
+  margin: 0;
+  font-family: var(--font-family);
+  font-size: 14px;
+  line-height: 1.5;
+  color: #4a4a4a;
+}
+
+.account-delete-modal__error {
+  margin: 12px 0 0 0;
+  font-family: var(--font-family);
+  font-size: 13px;
+  color: #c13515;
+}
+
+.account-delete-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
 }
