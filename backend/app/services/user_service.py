@@ -421,6 +421,37 @@ class UserService:
             self._users[user_id]["profile"] = profile.model_copy(update={"nickname": nickname})
             return self._users[user_id]["profile"]
 
+    def delete_account(self, user_id: str) -> None:
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+                if cursor.rowcount == 0:
+                    raise UserServiceError("User not found.", status.HTTP_404_NOT_FOUND)
+                connection.commit()
+            return
+
+        with self._lock:
+            user_record = self._users.pop(user_id, None)
+            if not user_record:
+                raise UserServiceError("User not found.", status.HTTP_404_NOT_FOUND)
+            self._email_index.pop(user_record["profile"].email, None)
+            self._preferences.pop(user_id, None)
+            self._favorites.pop(user_id, None)
+            self._devices.pop(user_id, None)
+            self._avatars.pop(user_id, None)
+            self._ai_sessions.pop(user_id, None)
+            self._bookings = {
+                booking_id: booking
+                for booking_id, booking in self._bookings.items()
+                if booking.get("user_id") != user_id
+            }
+            self._tokens = {
+                token_hash: token
+                for token_hash, token in self._tokens.items()
+                if token.get("user_id") != user_id
+            }
+
     def update_avatar(self, user_id: str, *, content_type: str, data: bytes) -> str:
         avatar_url = f"/api/v1/user/avatar/{user_id}"
         if self._mysql_available:
