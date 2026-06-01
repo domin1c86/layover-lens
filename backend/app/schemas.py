@@ -201,6 +201,7 @@ class UserProfile(BaseModel):
     id: str
     username: str
     email: str
+    email_verified: bool = True
     nickname: Optional[str] = None
     avatar_url: Optional[str] = None
     created_at: datetime
@@ -219,6 +220,7 @@ class AuthRegisterRequest(BaseModel):
     username: str = Field(min_length=1, max_length=80)
     email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=6, max_length=255)
+    email_verification_token: str = Field(min_length=16, max_length=255)
     session_duration: SessionDuration = "day"
 
 
@@ -265,6 +267,29 @@ class ForgotPasswordResetRequest(BaseModel):
     new_password: str = Field(min_length=6, max_length=255)
 
 
+EmailVerificationPurpose = Literal["register", "verify_current", "change_email"]
+
+
+class EmailVerificationSendRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    purpose: EmailVerificationPurpose
+
+
+class EmailVerificationSendResponse(BaseModel):
+    expires_in_seconds: int
+
+
+class EmailVerificationVerifyRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    code: str = Field(min_length=4, max_length=12)
+    purpose: EmailVerificationPurpose
+
+
+class EmailVerificationVerifyResponse(BaseModel):
+    verified: bool
+    verification_token: Optional[str] = None
+
+
 class UserProfileUpdate(BaseModel):
     nickname: Optional[str] = Field(default=None, max_length=80)
 
@@ -275,7 +300,20 @@ class AvatarResponse(BaseModel):
 
 class UserEmailUpdateRequest(BaseModel):
     new_email: str = Field(min_length=3, max_length=255)
-    code: Optional[str] = Field(default=None, max_length=12)
+    current_email: str = Field(min_length=3, max_length=255)
+    verification_token: str = Field(min_length=16, max_length=255)
+
+
+class UserEmailVerifyRequest(BaseModel):
+    verification_token: str = Field(min_length=16, max_length=255)
+
+
+class UserPasswordCheckRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=255)
+
+
+class UserPasswordCheckResponse(BaseModel):
+    valid: bool
 
 
 class UserPasswordUpdateRequest(BaseModel):

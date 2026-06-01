@@ -54,7 +54,10 @@ export function getStoredAuthSession(): AuthSession | null {
     }
     return {
       token: session.token,
-      user: session.user,
+      user: {
+        ...session.user,
+        email_verified: session.user.email_verified ?? true,
+      },
       expiresAt: session.expiresAt ?? null,
       sessionDuration: session.sessionDuration,
     }

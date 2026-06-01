@@ -23,6 +23,7 @@ from app.schemas import (
     AuthTokenResponse,
     BookingCreateResponse,
     DeviceInfo,
+    EmailVerificationPurpose,
     FavoriteCreateResponse,
     RoutePlan,
     SessionDuration,
@@ -136,6 +137,8 @@ class UserService:
         self._devices: dict[str, dict[str, dict]] = {}
         self._reset_by_email: dict[str, dict] = {}
         self._reset_tokens: dict[str, dict] = {}
+        self._email_verifications: dict[tuple[str, EmailVerificationPurpose], dict] = {}
+        self._email_verification_tokens: dict[str, dict] = {}
         self._avatars: dict[str, tuple[str, bytes]] = {}
         self._ai_sessions: dict[str, dict[str, dict]] = {}
         self._bookings: dict[str, dict] = {}
@@ -169,6 +172,7 @@ class UserService:
                 username VARCHAR(80) NOT NULL,
                 email VARCHAR(255) NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
+                email_verified BOOLEAN NOT NULL DEFAULT TRUE,
                 nickname VARCHAR(80),
                 avatar_url VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -204,6 +208,17 @@ class UserService:
                 expires_at TIMESTAMP NOT NULL,
                 reset_token VARCHAR(120),
                 verified_at TIMESTAMP NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS email_verification_tokens (
+                email VARCHAR(255) NOT NULL,
+                purpose VARCHAR(40) NOT NULL,
+                code VARCHAR(20) NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                verification_token VARCHAR(120),
+                verified_at TIMESTAMP NULL,
+                PRIMARY KEY (email, purpose)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """,
             """
@@ -267,6 +282,7 @@ class UserService:
             cursor = connection.cursor()
             for statement in statements:
                 cursor.execute(statement)
+            self._ensure_mysql_column(cursor, "users", "email_verified", "BOOLEAN NOT NULL DEFAULT TRUE AFTER password_hash")
             self._ensure_mysql_column(cursor, "auth_tokens", "expires_at", "TIMESTAMP NULL AFTER created_at")
             connection.commit()
             return True
@@ -288,16 +304,23 @@ class UserService:
         username: str,
         email: str,
         password: str,
+        email_verification_token: str,
         session_duration: SessionDuration = "day",
         request: Optional[Request] = None,
     ) -> AuthTokenResponse:
         email = _normalize_email(email)
+        self._consume_email_verification_token(
+            email=email,
+            purpose="register",
+            verification_token=email_verification_token,
+        )
         user_id = f"user_{uuid4().hex}"
         created_at = _utcnow()
         profile = UserProfile(
             id=user_id,
             username=username.strip(),
             email=email,
+            email_verified=True,
             nickname=None,
             avatar_url=None,
             created_at=created_at,
@@ -310,10 +333,10 @@ class UserService:
                     cursor = connection.cursor()
                     cursor.execute(
                         """
-                        INSERT INTO users (id, username, email, password_hash, created_at)
-                        VALUES (%s, %s, %s, %s, %s)
+                        INSERT INTO users (id, username, email, password_hash, email_verified, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s)
                         """,
-                        (profile.id, profile.username, profile.email, password_hash, created_at),
+                        (profile.id, profile.username, profile.email, password_hash, True, created_at),
                     )
                     self._ensure_preferences_mysql(cursor, profile.id)
                     connection.commit()
@@ -376,7 +399,7 @@ class UserService:
                 cursor = connection.cursor(dictionary=True)
                 cursor.execute(
                     """
-                    SELECT u.id, u.username, u.email, u.nickname, u.avatar_url, u.created_at
+                    SELECT u.id, u.username, u.email, u.email_verified, u.nickname, u.avatar_url, u.created_at
                     FROM auth_tokens t
                     JOIN users u ON u.id = t.user_id
                     WHERE t.token_hash = %s
@@ -490,15 +513,30 @@ class UserService:
             raise UserServiceError("Avatar not found.", status.HTTP_404_NOT_FOUND)
         return avatar
 
-    def update_email(self, user_id: str, *, new_email: str, code: Optional[str]) -> UserProfile:
-        if code is not None and code != RESET_CODE:
-            raise UserServiceError("Invalid verification code.", status.HTTP_400_BAD_REQUEST)
+    def update_email(
+        self,
+        user_id: str,
+        *,
+        new_email: str,
+        current_email: str,
+        verification_token: str,
+    ) -> UserProfile:
+        profile = self.get_profile(user_id)
+        if _normalize_email(current_email) != profile.email:
+            raise UserServiceError("Current email confirmation does not match.", status.HTTP_400_BAD_REQUEST)
         email = _normalize_email(new_email)
+        if email == profile.email:
+            raise UserServiceError("New email must be different from the current email.", status.HTTP_400_BAD_REQUEST)
+        self._consume_email_verification_token(
+            email=email,
+            purpose="change_email",
+            verification_token=verification_token,
+        )
         if self._mysql_available:
             try:
                 with self._connect() as connection:
                     cursor = connection.cursor()
-                    cursor.execute("UPDATE users SET email = %s WHERE id = %s", (email, user_id))
+                    cursor.execute("UPDATE users SET email = %s, email_verified = TRUE WHERE id = %s", (email, user_id))
                     connection.commit()
             except Exception as exc:
                 raise UserServiceError("Email is already registered.", status.HTTP_409_CONFLICT) from exc
@@ -510,7 +548,7 @@ class UserService:
             profile = self._users[user_id]["profile"]
             self._email_index.pop(profile.email, None)
             self._email_index[email] = user_id
-            self._users[user_id]["profile"] = profile.model_copy(update={"email": email})
+            self._users[user_id]["profile"] = profile.model_copy(update={"email": email, "email_verified": True})
             return self._users[user_id]["profile"]
 
     def update_password(self, user_id: str, *, current_password: str, new_password: str) -> None:
@@ -519,6 +557,148 @@ class UserService:
         if not _verify_password(current_password, current_hash or ""):
             raise UserServiceError("Current password is incorrect.", status.HTTP_400_BAD_REQUEST)
         self._set_password(user_id, _hash_password(new_password))
+
+    def check_password(self, user_id: str, current_password: str) -> bool:
+        profile = self.get_profile(user_id)
+        _, current_hash = self._get_user_with_password(profile.email)
+        return _verify_password(current_password, current_hash or "")
+
+    def verify_current_email(self, user_id: str, *, verification_token: str) -> UserProfile:
+        profile = self.get_profile(user_id)
+        self._consume_email_verification_token(
+            email=profile.email,
+            purpose="verify_current",
+            verification_token=verification_token,
+        )
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute("UPDATE users SET email_verified = TRUE WHERE id = %s", (user_id,))
+                connection.commit()
+            return self.get_profile(user_id)
+
+        with self._lock:
+            self._users[user_id]["profile"] = profile.model_copy(update={"email_verified": True})
+            return self._users[user_id]["profile"]
+
+    def send_email_verification_code(self, *, email: str, purpose: EmailVerificationPurpose) -> int:
+        email = _normalize_email(email)
+        if purpose in {"register", "change_email"} and self.check_email(email):
+            raise UserServiceError("Email is already registered.", status.HTTP_409_CONFLICT)
+        if purpose == "verify_current" and not self.check_email(email):
+            raise UserServiceError("Email is not registered.", status.HTTP_404_NOT_FOUND)
+
+        expires_at = _utcnow() + timedelta(seconds=RESET_CODE_TTL_SECONDS)
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO email_verification_tokens (email, purpose, code, expires_at)
+                    VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE code = VALUES(code), expires_at = VALUES(expires_at),
+                        verification_token = NULL, verified_at = NULL
+                    """,
+                    (email, purpose, RESET_CODE, expires_at),
+                )
+                connection.commit()
+        else:
+            with self._lock:
+                self._email_verifications[(email, purpose)] = {
+                    "code": RESET_CODE,
+                    "expires_at": expires_at,
+                }
+        return RESET_CODE_TTL_SECONDS
+
+    def verify_email_verification_code(
+        self,
+        *,
+        email: str,
+        code: str,
+        purpose: EmailVerificationPurpose,
+    ) -> tuple[bool, Optional[str]]:
+        email = _normalize_email(email)
+        verification_token = secrets.token_urlsafe(32)
+        now = _utcnow()
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(
+                    """
+                    SELECT code, expires_at FROM email_verification_tokens
+                    WHERE email = %s AND purpose = %s
+                    """,
+                    (email, purpose),
+                )
+                row = cursor.fetchone()
+                if not row or row["code"] != code or row["expires_at"] < now:
+                    return False, None
+                cursor = connection.cursor()
+                cursor.execute(
+                    """
+                    UPDATE email_verification_tokens
+                    SET verification_token = %s, verified_at = %s
+                    WHERE email = %s AND purpose = %s
+                    """,
+                    (verification_token, now, email, purpose),
+                )
+                connection.commit()
+            return True, verification_token
+
+        with self._lock:
+            record = self._email_verifications.get((email, purpose))
+            if not record or record["code"] != code or record["expires_at"] < now:
+                return False, None
+            record["verification_token"] = verification_token
+            record["verified_at"] = now
+            self._email_verification_tokens[verification_token] = {
+                "email": email,
+                "purpose": purpose,
+                "expires_at": record["expires_at"],
+            }
+        return True, verification_token
+
+    def _consume_email_verification_token(
+        self,
+        *,
+        email: str,
+        purpose: EmailVerificationPurpose,
+        verification_token: str,
+    ) -> None:
+        email = _normalize_email(email)
+        now = _utcnow()
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(
+                    """
+                    SELECT expires_at FROM email_verification_tokens
+                    WHERE email = %s AND purpose = %s
+                      AND verification_token = %s AND verified_at IS NOT NULL
+                    """,
+                    (email, purpose, verification_token),
+                )
+                row = cursor.fetchone()
+                if not row or row["expires_at"] < now:
+                    raise UserServiceError("Invalid email verification token.", status.HTTP_400_BAD_REQUEST)
+                cursor = connection.cursor()
+                cursor.execute(
+                    "DELETE FROM email_verification_tokens WHERE email = %s AND purpose = %s",
+                    (email, purpose),
+                )
+                connection.commit()
+            return
+
+        with self._lock:
+            record = self._email_verification_tokens.pop(verification_token, None)
+            if (
+                not record
+                or record["email"] != email
+                or record["purpose"] != purpose
+                or record["expires_at"] < now
+            ):
+                raise UserServiceError("Invalid email verification token.", status.HTTP_400_BAD_REQUEST)
+            self._email_verifications.pop((email, purpose), None)
 
     def check_email(self, email: str) -> bool:
         profile, _ = self._get_user_with_password(_normalize_email(email))
@@ -1017,7 +1197,7 @@ class UserService:
             with self._connect() as connection:
                 cursor = connection.cursor(dictionary=True)
                 cursor.execute(
-                    "SELECT id, username, email, password_hash, nickname, avatar_url, created_at FROM users WHERE email = %s",
+                    "SELECT id, username, email, password_hash, email_verified, nickname, avatar_url, created_at FROM users WHERE email = %s",
                     (email,),
                 )
                 row = cursor.fetchone()
@@ -1036,7 +1216,7 @@ class UserService:
             with self._connect() as connection:
                 cursor = connection.cursor(dictionary=True)
                 cursor.execute(
-                    "SELECT id, username, email, nickname, avatar_url, created_at FROM users WHERE id = %s",
+                    "SELECT id, username, email, email_verified, nickname, avatar_url, created_at FROM users WHERE id = %s",
                     (user_id,),
                 )
                 row = cursor.fetchone()
@@ -1059,6 +1239,7 @@ class UserService:
             id=row["id"],
             username=row["username"],
             email=row["email"],
+            email_verified=bool(row.get("email_verified", True)),
             nickname=row.get("nickname"),
             avatar_url=row.get("avatar_url"),
             created_at=row["created_at"],

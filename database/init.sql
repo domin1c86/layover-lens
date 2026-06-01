@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(80) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    email_verified BOOLEAN NOT NULL DEFAULT TRUE,
     nickname VARCHAR(80),
     avatar_url VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -82,6 +83,16 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     reset_token VARCHAR(120),
     verified_at TIMESTAMP NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='密码重置验证码表';
+
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+    email VARCHAR(255) NOT NULL,
+    purpose VARCHAR(40) NOT NULL,
+    code VARCHAR(20) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    verification_token VARCHAR(120),
+    verified_at TIMESTAMP NULL,
+    PRIMARY KEY (email, purpose)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='閭楠岃瘉鐮佽〃';
 
 CREATE TABLE IF NOT EXISTS user_preferences (
     user_id VARCHAR(40) PRIMARY KEY,

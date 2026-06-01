@@ -4,6 +4,10 @@ from app.schemas import (
     AuthLoginRequest,
     AuthRegisterRequest,
     AuthTokenResponse,
+    EmailVerificationSendRequest,
+    EmailVerificationSendResponse,
+    EmailVerificationVerifyRequest,
+    EmailVerificationVerifyResponse,
     ForgotPasswordCheckEmailRequest,
     ForgotPasswordCheckEmailResponse,
     ForgotPasswordResetRequest,
@@ -39,6 +43,7 @@ def register(
             username=payload.username,
             email=payload.email,
             password=payload.password,
+            email_verification_token=payload.email_verification_token,
             session_duration=payload.session_duration,
             request=request,
         )
@@ -70,6 +75,34 @@ def logout(
 ) -> SuccessResponse:
     user_service.logout(current_user.token_hash)
     return SuccessResponse(success=True)
+
+
+@router.post("/email-verification/send", response_model=EmailVerificationSendResponse)
+def send_email_verification(
+    payload: EmailVerificationSendRequest,
+    user_service: UserService = Depends(get_user_service),
+) -> EmailVerificationSendResponse:
+    try:
+        expires_in_seconds = user_service.send_email_verification_code(
+            email=payload.email,
+            purpose=payload.purpose,
+        )
+        return EmailVerificationSendResponse(expires_in_seconds=expires_in_seconds)
+    except UserServiceError as exc:
+        _raise_http(exc)
+
+
+@router.post("/email-verification/verify", response_model=EmailVerificationVerifyResponse)
+def verify_email_verification(
+    payload: EmailVerificationVerifyRequest,
+    user_service: UserService = Depends(get_user_service),
+) -> EmailVerificationVerifyResponse:
+    verified, verification_token = user_service.verify_email_verification_code(
+        email=payload.email,
+        code=payload.code,
+        purpose=payload.purpose,
+    )
+    return EmailVerificationVerifyResponse(verified=verified, verification_token=verification_token)
 
 
 @router.post("/forgot-password/check-email", response_model=ForgotPasswordCheckEmailResponse)

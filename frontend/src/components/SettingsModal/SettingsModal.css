@@ -224,6 +224,15 @@
   cursor: not-allowed;
 }
 
+.settings-panel__password-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-panel__password-wrap .settings-panel__input {
+  width: 100%;
+}
+
 .settings-panel__btn {
   font-family: var(--font-family);
   font-size: 14px;

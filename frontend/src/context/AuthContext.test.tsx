@@ -22,6 +22,7 @@ const profile: UserProfile = {
   id: 'user_1',
   username: 'tester',
   email: 'tester@example.com',
+  email_verified: true,
   nickname: null,
   avatar_url: null,
   created_at: '2026-01-01T00:00:00',
@@ -71,13 +72,14 @@ describe('AuthContext', () => {
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
 
     await act(async () => {
-      await result.current.register('tester@example.com', 'tester', 'secret123')
+      await result.current.register('tester@example.com', 'tester', 'secret123', 'verify_token')
     })
 
     expect(mocks.authApi.register).toHaveBeenCalledWith({
       email: 'tester@example.com',
       username: 'tester',
       password: 'secret123',
+      email_verification_token: 'verify_token',
       session_duration: 'month',
     })
     expect(getStoredAuthSession()?.sessionDuration).toBe('month')
