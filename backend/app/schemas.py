@@ -232,6 +232,15 @@ class AuthTokenResponse(BaseModel):
     session_duration: SessionDuration = "day"
 
 
+class SessionDurationUpdateRequest(BaseModel):
+    session_duration: SessionDuration
+
+
+class SessionDurationUpdateResponse(BaseModel):
+    expires_at: Optional[datetime] = None
+    session_duration: SessionDuration
+
+
 class SuccessResponse(BaseModel):
     success: bool = True
 
@@ -296,6 +305,10 @@ class UserProfileUpdate(BaseModel):
 
 class AvatarResponse(BaseModel):
     avatar_url: str
+
+
+class AvatarPresetUpdateRequest(BaseModel):
+    preset_id: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class UserEmailUpdateRequest(BaseModel):

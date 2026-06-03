@@ -146,11 +146,27 @@ export interface AuthTokenResponse {
   session_duration: SessionDuration;
 }
 
+export interface SessionDurationUpdateResponse {
+  expires_at: string | null;
+  session_duration: SessionDuration;
+}
+
 export interface AuthSession {
-  token: string;
   user: UserProfile;
   expiresAt: string | null;
   sessionDuration: SessionDuration;
+}
+
+export interface DeviceInfo {
+  id: string;
+  device_name: string;
+  ip_address: string;
+  login_time: string;
+  is_current: boolean;
+}
+
+export interface DeviceListResponse {
+  devices: DeviceInfo[];
 }
 
 export interface ForgotPasswordCheckEmailResponse {

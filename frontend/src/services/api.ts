@@ -9,33 +9,49 @@ import type {
   AuthLoginRequest,
   AuthRegisterRequest,
   AuthTokenResponse,
+  DeviceInfo,
+  DeviceListResponse,
   EmailVerificationPurpose,
   EmailVerificationSendResponse,
   EmailVerificationVerifyResponse,
   ForgotPasswordCheckEmailResponse,
   ForgotPasswordSendCodeResponse,
   ForgotPasswordVerifyCodeResponse,
+  SessionDuration,
+  SessionDurationUpdateResponse,
   UserProfile,
 } from '../types';
-import { clearAuthSession, getStoredAuthToken } from './authStorage';
+import { clearAuthSession } from './authStorage';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const CSRF_COOKIE_NAME = import.meta.env.VITE_CSRF_COOKIE_NAME || 'layover_lens_csrf';
+const CSRF_HEADER_NAME = import.meta.env.VITE_CSRF_HEADER_NAME || 'X-CSRF-Token';
+const CSRF_METHODS = new Set(['post', 'put', 'patch', 'delete']);
 
 const apiClient = axios.create({
   baseURL: `${API_BASE_URL}/api/v1`,
   timeout: 10000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
 // 搜索 API
+function getCookieValue(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const prefix = `${encodeURIComponent(name)}=`;
+  const item = document.cookie.split('; ').find((entry) => entry.startsWith(prefix));
+  return item ? decodeURIComponent(item.slice(prefix.length)) : null;
+}
+
 apiClient.interceptors.request.use((config) => {
-  const token = getStoredAuthToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  } else if (config.headers.Authorization) {
-    delete config.headers.Authorization;
+  const method = (config.method || 'get').toLowerCase();
+  if (CSRF_METHODS.has(method)) {
+    const csrfToken = getCookieValue(CSRF_COOKIE_NAME);
+    if (csrfToken) {
+      config.headers[CSRF_HEADER_NAME] = csrfToken;
+    }
   }
   return config;
 });
@@ -43,7 +59,7 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error?.response?.status === 401) {
+    if (error?.response?.status === 401 || error?.response?.status === 403) {
       clearAuthSession();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('auth:unauthorized'));
@@ -83,6 +99,18 @@ export const authApi = {
 
   getProfile: async (): Promise<UserProfile> => {
     const response = await apiClient.get<UserProfile>('/user/profile');
+    return response.data;
+  },
+
+  updateProfile: async (nickname: string): Promise<UserProfile> => {
+    const response = await apiClient.put<UserProfile>('/user/profile', { nickname });
+    return response.data;
+  },
+
+  updateAvatarPreset: async (presetId: string): Promise<UserProfile> => {
+    const response = await apiClient.put<UserProfile>('/user/avatar/preset', {
+      preset_id: presetId,
+    });
     return response.data;
   },
 
@@ -172,6 +200,22 @@ export const authApi = {
       current_password: currentPassword,
       new_password: newPassword,
     });
+  },
+
+  updateSessionDuration: async (sessionDuration: SessionDuration): Promise<SessionDurationUpdateResponse> => {
+    const response = await apiClient.put<SessionDurationUpdateResponse>('/user/session-duration', {
+      session_duration: sessionDuration,
+    });
+    return response.data;
+  },
+
+  listDevices: async (): Promise<DeviceInfo[]> => {
+    const response = await apiClient.get<DeviceListResponse>('/user/devices');
+    return response.data.devices;
+  },
+
+  revokeDevice: async (deviceId: string): Promise<void> => {
+    await apiClient.delete(`/user/devices/${deviceId}`);
   },
 };
 

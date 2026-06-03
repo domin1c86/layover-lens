@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     logout: vi.fn(),
     deleteAccount: vi.fn(),
     getProfile: vi.fn(),
+    updateSessionDuration: vi.fn(),
   },
 }))
 
@@ -44,10 +45,14 @@ describe('AuthContext', () => {
     vi.clearAllMocks()
     mocks.authApi.logout.mockResolvedValue(undefined)
     mocks.authApi.deleteAccount.mockResolvedValue(undefined)
-    mocks.authApi.getProfile.mockResolvedValue(profile)
+    mocks.authApi.getProfile.mockRejectedValue(new Error('No cookie session'))
+    mocks.authApi.updateSessionDuration.mockResolvedValue({
+      expires_at: '2099-02-01T00:00:00',
+      session_duration: 'week',
+    })
   })
 
-  it('logs in with the default one-day duration and stores the token', async () => {
+  it('logs in with the default one-day duration without storing the token', async () => {
     mocks.authApi.login.mockResolvedValue(tokenResponse('day'))
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
 
@@ -63,7 +68,11 @@ describe('AuthContext', () => {
     })
     expect(success!.sessionDuration).toBe('day')
     expect(result.current.user?.email).toBe('tester@example.com')
-    expect(getStoredAuthSession()?.token).toBe('token_day')
+    expect(getStoredAuthSession()).toMatchObject({
+      user: profile,
+      sessionDuration: 'day',
+    })
+    expect(JSON.parse(localStorage.getItem('layover_lens_auth_session') || '{}').token).toBeUndefined()
   })
 
   it('registers with the configured session duration', async () => {
@@ -99,6 +108,23 @@ describe('AuthContext', () => {
     expect(getStoredAuthSession()).toBeNull()
   })
 
+  it('updates the current stored session duration through the backend', async () => {
+    mocks.authApi.login.mockResolvedValue(tokenResponse('day'))
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+
+    await act(async () => {
+      await result.current.login('tester@example.com', 'secret123')
+      await result.current.setSessionDuration('week')
+    })
+
+    expect(mocks.authApi.updateSessionDuration).toHaveBeenCalledWith('week')
+    expect(result.current.sessionDuration).toBe('week')
+    expect(getStoredAuthSession()).toMatchObject({
+      expiresAt: '2099-02-01T00:00:00',
+      sessionDuration: 'week',
+    })
+  })
+
   it('deletes the account and clears local auth state', async () => {
     mocks.authApi.login.mockResolvedValue(tokenResponse('day'))
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
@@ -113,9 +139,8 @@ describe('AuthContext', () => {
     expect(getStoredAuthSession()).toBeNull()
   })
 
-  it('ignores an expired stored token on startup', () => {
+  it('ignores an expired stored session on startup', () => {
     saveAuthSession({
-      token: 'expired_token',
       user: profile,
       expiresAt: '2000-01-01T00:00:00',
       sessionDuration: 'day',
@@ -125,6 +150,19 @@ describe('AuthContext', () => {
 
     expect(result.current.user).toBeNull()
     expect(getStoredAuthSession()).toBeNull()
+  })
+
+  it('restores auth state from the backend profile when the cookie is valid', async () => {
+    mocks.authApi.getProfile.mockResolvedValue(profile)
+
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+
+    await waitFor(() => expect(result.current.user?.email).toBe('tester@example.com'))
+    expect(getStoredAuthSession()).toMatchObject({
+      user: profile,
+      sessionDuration: 'day',
+    })
+    expect(JSON.parse(localStorage.getItem('layover_lens_auth_session') || '{}').token).toBeUndefined()
   })
 
   it('clears auth state when a 401 event is emitted', async () => {

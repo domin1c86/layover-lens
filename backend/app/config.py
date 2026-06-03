@@ -14,6 +14,7 @@ class Settings(BaseSettings):
 
     app_name: str = Field(default="Layover Lens API", alias="APP_NAME")
     app_version: str = Field(default="1.0.0", alias="APP_VERSION")
+    app_env: str = Field(default="development", alias="APP_ENV")
     api_v1_prefix: str = Field(default="/api/v1", alias="API_V1_PREFIX")
     database_url: str = Field(
         default="mysql+mysqlconnector://root:devpassword@mysql:3306/layover_lens",
@@ -25,6 +26,15 @@ class Settings(BaseSettings):
         default=["http://localhost:3000", "http://127.0.0.1:3000"],
         alias="CORS_ORIGINS",
     )
+    auth_cookie_name: str = Field(default="layover_lens_session", alias="AUTH_COOKIE_NAME")
+    csrf_cookie_name: str = Field(default="layover_lens_csrf", alias="CSRF_COOKIE_NAME")
+    csrf_header_name: str = Field(default="X-CSRF-Token", alias="CSRF_HEADER_NAME")
+    session_cookie_secret: str = Field(default="dev-session-cookie-secret", alias="SESSION_COOKIE_SECRET")
+    csrf_secret: str = Field(default="dev-csrf-secret", alias="CSRF_SECRET")
+    session_cookie_secure: bool = Field(default=False, alias="SESSION_COOKIE_SECURE")
+    session_cookie_samesite: str = Field(default="lax", alias="SESSION_COOKIE_SAMESITE")
+    disable_bearer_auth_in_production: bool = Field(default=True, alias="DISABLE_BEARER_AUTH_IN_PRODUCTION")
+    rate_limit_window_seconds: int = Field(default=300, alias="RATE_LIMIT_WINDOW_SECONDS")
     max_routes: int = Field(default=8, alias="MAX_ROUTES")
     default_max_transfers: int = Field(default=2, alias="DEFAULT_MAX_TRANSFERS")
     min_transfer_minutes_same_station: int = Field(

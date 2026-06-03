@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import secrets
 from dataclasses import dataclass
@@ -12,7 +13,7 @@ from typing import Optional
 from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import settings
@@ -36,6 +37,18 @@ from app.schemas import (
 RESET_CODE = "000000"
 RESET_CODE_TTL_SECONDS = 60
 PASSWORD_ITERATIONS = 120_000
+APP_TIMEZONE = timezone(timedelta(hours=8))
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
+AUDIT_EVENTS = {
+    "login_success",
+    "login_failed",
+    "register_success",
+    "register_failed",
+    "email_changed",
+    "password_changed",
+    "account_deleted",
+    "device_revoked",
+}
 SESSION_DURATION_DELTAS: dict[SessionDuration, Optional[timedelta]] = {
     "day": timedelta(days=1),
     "week": timedelta(days=7),
@@ -64,12 +77,109 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _user_id_timestamp(created_at: datetime) -> str:
+    return created_at.replace(tzinfo=timezone.utc).astimezone(APP_TIMEZONE).strftime("%Y%m%d%H%M%S")
+
+
+def _user_id_from_existing(timestamp: str, existing_ids) -> str:
+    prefix = f"user_{timestamp}"
+    suffixes: list[int] = []
+    for existing_id in existing_ids:
+        if not isinstance(existing_id, str) or not existing_id.startswith(prefix):
+            continue
+        suffix_text = existing_id[len(prefix):]
+        if suffix_text.isdigit():
+            suffixes.append(int(suffix_text))
+    suffix = 0 if not suffixes else max(suffixes) + 1
+    return f"{prefix}{suffix}"
+
+
 def _normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
 def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _client_ip(request: Optional[Request]) -> str:
+    if not request or not request.client:
+        return "unknown"
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip() or request.client.host
+    return request.client.host
+
+
+def _is_production() -> bool:
+    return settings.app_env.lower() == "production"
+
+
+def _bearer_auth_enabled() -> bool:
+    return not (_is_production() and settings.disable_bearer_auth_in_production)
+
+
+def _cookie_max_age(expires_at: Optional[datetime]) -> Optional[int]:
+    if expires_at is None:
+        return None
+    return max(0, int((expires_at - _utcnow()).total_seconds()))
+
+
+def _csrf_signature(token_hash: str, nonce: str) -> str:
+    digest = hmac.new(
+        settings.csrf_secret.encode("utf-8"),
+        f"{token_hash}.{nonce}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return digest
+
+
+def _create_csrf_token(session_token: str) -> str:
+    nonce = secrets.token_urlsafe(16)
+    signature = _csrf_signature(_token_hash(session_token), nonce)
+    return f"{nonce}.{signature}"
+
+
+def _verify_csrf_token(*, session_token: str, csrf_token: str) -> bool:
+    try:
+        nonce, signature = csrf_token.split(".", 1)
+    except ValueError:
+        return False
+    expected = _csrf_signature(_token_hash(session_token), nonce)
+    return secrets.compare_digest(signature, expected)
+
+
+def set_auth_cookies(response: Response, token: str, expires_at: Optional[datetime]) -> str:
+    csrf_token = _create_csrf_token(token)
+    max_age = _cookie_max_age(expires_at)
+    cookie_expires = expires_at.replace(tzinfo=timezone.utc) if expires_at is not None else None
+    same_site = settings.session_cookie_samesite.lower()
+    response.set_cookie(
+        key=settings.auth_cookie_name,
+        value=token,
+        httponly=True,
+        secure=settings.session_cookie_secure,
+        samesite=same_site,
+        max_age=max_age,
+        expires=cookie_expires,
+        path="/",
+    )
+    response.set_cookie(
+        key=settings.csrf_cookie_name,
+        value=csrf_token,
+        httponly=False,
+        secure=settings.session_cookie_secure,
+        samesite=same_site,
+        max_age=max_age,
+        expires=cookie_expires,
+        path="/",
+    )
+    return csrf_token
+
+
+def clear_auth_cookies(response: Response) -> None:
+    response.delete_cookie(settings.auth_cookie_name, path="/")
+    response.delete_cookie(settings.csrf_cookie_name, path="/")
 
 
 def _hash_password(password: str) -> str:
@@ -142,6 +252,16 @@ class UserService:
         self._avatars: dict[str, tuple[str, bytes]] = {}
         self._ai_sessions: dict[str, dict[str, dict]] = {}
         self._bookings: dict[str, dict] = {}
+        self._rate_limits: dict[str, list[datetime]] = {}
+        self._audit_logs: list[dict] = []
+
+        if _is_production() and not self._mysql_available:
+            raise RuntimeError("MySQL is required for account storage in production.")
+        if _is_production():
+            if not settings.session_cookie_secret or settings.session_cookie_secret == "dev-session-cookie-secret":
+                raise RuntimeError("SESSION_COOKIE_SECRET must be configured in production.")
+            if not settings.csrf_secret or settings.csrf_secret == "dev-csrf-secret":
+                raise RuntimeError("CSRF_SECRET must be configured in production.")
 
     def _connect(self):
         import mysql.connector
@@ -277,6 +397,20 @@ class UserService:
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """,
+            """
+            CREATE TABLE IF NOT EXISTS security_audit_logs (
+                id VARCHAR(40) PRIMARY KEY,
+                user_id VARCHAR(40),
+                event_type VARCHAR(80) NOT NULL,
+                ip_address VARCHAR(80) NOT NULL,
+                device_name VARCHAR(255),
+                success BOOLEAN NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                metadata_json TEXT NOT NULL,
+                INDEX idx_audit_user_time (user_id, created_at),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
         ]
         try:
             cursor = connection.cursor()
@@ -298,6 +432,94 @@ class UserService:
             return
         cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}")
 
+    def _check_rate_limit(self, scope: str, identifier: str, *, limit: int, window_seconds: Optional[int] = None) -> None:
+        if not identifier:
+            identifier = "unknown"
+        window = timedelta(seconds=window_seconds or settings.rate_limit_window_seconds)
+        now = _utcnow()
+        key = f"{scope}:{identifier}"
+        with self._lock:
+            attempts = [
+                attempt
+                for attempt in self._rate_limits.get(key, [])
+                if now - attempt < window
+            ]
+            if len(attempts) >= limit:
+                self._rate_limits[key] = attempts
+                raise UserServiceError("Too many attempts. Please try again later.", status.HTTP_429_TOO_MANY_REQUESTS)
+            attempts.append(now)
+            self._rate_limits[key] = attempts
+
+    def _record_audit_event(
+        self,
+        *,
+        event_type: str,
+        user_id: Optional[str],
+        request: Optional[Request],
+        success: bool,
+        metadata: Optional[dict] = None,
+    ) -> None:
+        if event_type not in AUDIT_EVENTS:
+            return
+        audit_id = f"audit_{uuid4().hex}"
+        created_at = _utcnow()
+        ip_address = _client_ip(request)
+        device_name = request.headers.get("user-agent", "Unknown device")[:255] if request else "Unknown device"
+        clean_metadata = {
+            key: value
+            for key, value in (metadata or {}).items()
+            if key not in {"password", "token", "code", "access_token", "verification_token", "reset_token"}
+        }
+
+        if self._mysql_available:
+            try:
+                with self._connect() as connection:
+                    cursor = connection.cursor()
+                    cursor.execute(
+                        """
+                        INSERT INTO security_audit_logs (
+                            id, user_id, event_type, ip_address, device_name,
+                            success, created_at, metadata_json
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            audit_id,
+                            user_id,
+                            event_type,
+                            ip_address,
+                            device_name,
+                            success,
+                            created_at,
+                            _json_dump(clean_metadata),
+                        ),
+                    )
+                    connection.commit()
+            except Exception:
+                return
+            return
+
+        with self._lock:
+            self._audit_logs.append(
+                {
+                    "id": audit_id,
+                    "user_id": user_id,
+                    "event_type": event_type,
+                    "ip_address": ip_address,
+                    "device_name": device_name,
+                    "success": success,
+                    "created_at": created_at,
+                    "metadata": clean_metadata,
+                }
+            )
+
+    @staticmethod
+    def _next_user_id_mysql(cursor, timestamp: str) -> str:
+        prefix = f"user_{timestamp}"
+        cursor.execute("SELECT id FROM users WHERE id LIKE %s", (f"{prefix}%",))
+        rows = cursor.fetchall()
+        return _user_id_from_existing(timestamp, [row[0] for row in rows])
+
     def register(
         self,
         *,
@@ -309,51 +531,107 @@ class UserService:
         request: Optional[Request] = None,
     ) -> AuthTokenResponse:
         email = _normalize_email(email)
-        self._consume_email_verification_token(
-            email=email,
-            purpose="register",
-            verification_token=email_verification_token,
-        )
-        user_id = f"user_{uuid4().hex}"
-        created_at = _utcnow()
-        profile = UserProfile(
-            id=user_id,
-            username=username.strip(),
-            email=email,
-            email_verified=True,
-            nickname=None,
-            avatar_url=None,
-            created_at=created_at,
-        )
-        password_hash = _hash_password(password)
+        self._check_rate_limit("register:ip", _client_ip(request), limit=100)
+        self._check_rate_limit("register:email", email, limit=5)
+        profile: Optional[UserProfile] = None
+        try:
+            self._consume_email_verification_token(
+                email=email,
+                purpose="register",
+                verification_token=email_verification_token,
+            )
+            created_at = _utcnow()
+            user_id_timestamp = _user_id_timestamp(created_at)
+            initial_nickname = username.strip()
+            password_hash = _hash_password(password)
 
-        if self._mysql_available:
-            try:
-                with self._connect() as connection:
-                    cursor = connection.cursor()
-                    cursor.execute(
-                        """
-                        INSERT INTO users (id, username, email, password_hash, email_verified, created_at)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        """,
-                        (profile.id, profile.username, profile.email, password_hash, True, created_at),
+            if self._mysql_available:
+                try:
+                    with self._connect() as connection:
+                        cursor = connection.cursor()
+                        cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
+                        if cursor.fetchone():
+                            raise UserServiceError("Email is already registered.", status.HTTP_409_CONFLICT)
+                        for _ in range(1000):
+                            user_id = self._next_user_id_mysql(cursor, user_id_timestamp)
+                            profile = UserProfile(
+                                id=user_id,
+                                username=user_id,
+                                email=email,
+                                email_verified=True,
+                                nickname=initial_nickname,
+                                avatar_url=None,
+                                created_at=created_at,
+                            )
+                            try:
+                                cursor.execute(
+                                    """
+                                    INSERT INTO users (
+                                        id, username, email, password_hash,
+                                        email_verified, nickname, created_at
+                                    )
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                    """,
+                                    (
+                                        profile.id,
+                                        profile.username,
+                                        profile.email,
+                                        password_hash,
+                                        True,
+                                        profile.nickname,
+                                        created_at,
+                                    ),
+                                )
+                                break
+                            except Exception as exc:
+                                if "PRIMARY" in str(exc).upper():
+                                    continue
+                                raise
+                        else:
+                            raise UserServiceError("Unable to generate user id.", status.HTTP_500_INTERNAL_SERVER_ERROR)
+                        self._ensure_preferences_mysql(cursor, profile.id)
+                        connection.commit()
+                except Exception as exc:
+                    if isinstance(exc, UserServiceError):
+                        raise exc
+                    raise UserServiceError("Email is already registered.", status.HTTP_409_CONFLICT) from exc
+            else:
+                with self._lock:
+                    if email in self._email_index:
+                        raise UserServiceError("Email is already registered.", status.HTTP_409_CONFLICT)
+                    user_id = _user_id_from_existing(user_id_timestamp, self._users.keys())
+                    profile = UserProfile(
+                        id=user_id,
+                        username=user_id,
+                        email=email,
+                        email_verified=True,
+                        nickname=initial_nickname,
+                        avatar_url=None,
+                        created_at=created_at,
                     )
-                    self._ensure_preferences_mysql(cursor, profile.id)
-                    connection.commit()
-            except Exception as exc:
-                raise UserServiceError("Email is already registered.", status.HTTP_409_CONFLICT) from exc
-        else:
-            with self._lock:
-                if email in self._email_index:
-                    raise UserServiceError("Email is already registered.", status.HTTP_409_CONFLICT)
-                self._users[user_id] = {
-                    "profile": profile,
-                    "password_hash": password_hash,
-                }
-                self._email_index[email] = user_id
-                self._preferences[user_id] = UserPreferences()
+                    self._users[user_id] = {
+                        "profile": profile,
+                        "password_hash": password_hash,
+                    }
+                    self._email_index[email] = user_id
+                    self._preferences[user_id] = UserPreferences()
 
-        return self._issue_token(profile, session_duration=session_duration, request=request)
+            self._record_audit_event(
+                event_type="register_success",
+                user_id=profile.id if profile else None,
+                request=request,
+                success=True,
+            )
+            return self._issue_token(profile, session_duration=session_duration, request=request)
+        except Exception:
+            self._record_audit_event(
+                event_type="register_failed",
+                user_id=None,
+                request=request,
+                success=False,
+                metadata={"email_domain": email.split("@")[-1] if "@" in email else ""},
+            )
+            raise
 
     def login(
         self,
@@ -363,9 +641,24 @@ class UserService:
         session_duration: SessionDuration = "day",
         request: Optional[Request] = None,
     ) -> AuthTokenResponse:
-        profile, password_hash = self._get_user_with_password(_normalize_email(email))
+        email = _normalize_email(email)
+        self._check_rate_limit("login:ip", _client_ip(request), limit=60)
+        self._check_rate_limit("login:email", email, limit=6)
+        profile, password_hash = self._get_user_with_password(email)
         if profile is None or not _verify_password(password, password_hash or ""):
+            self._record_audit_event(
+                event_type="login_failed",
+                user_id=profile.id if profile else None,
+                request=request,
+                success=False,
+            )
             raise UserServiceError("Invalid email or password.", status.HTTP_401_UNAUTHORIZED)
+        self._record_audit_event(
+            event_type="login_success",
+            user_id=profile.id,
+            request=request,
+            success=True,
+        )
         return self._issue_token(profile, session_duration=session_duration, request=request)
 
     def logout(self, token_hash: str) -> None:
@@ -391,6 +684,50 @@ class UserService:
                 if device:
                     device["revoked_at"] = _utcnow()
 
+    def update_current_session_duration(
+        self,
+        user_id: str,
+        token_hash: str,
+        session_duration: SessionDuration,
+    ) -> Optional[datetime]:
+        now = _utcnow()
+        delta = SESSION_DURATION_DELTAS[session_duration]
+        expires_at = now + delta if delta is not None else None
+
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    """
+                    UPDATE auth_tokens
+                    SET expires_at = %s
+                    WHERE token_hash = %s
+                      AND user_id = %s
+                      AND revoked_at IS NULL
+                      AND (expires_at IS NULL OR expires_at > %s)
+                    """,
+                    (expires_at, token_hash, user_id, now),
+                )
+                if cursor.rowcount == 0:
+                    raise UserServiceError("Invalid or expired token.", status.HTTP_401_UNAUTHORIZED)
+                connection.commit()
+            return expires_at
+
+        with self._lock:
+            token_record = self._tokens.get(token_hash)
+            if (
+                not token_record
+                or token_record.get("user_id") != user_id
+                or token_record.get("revoked_at") is not None
+                or (
+                    token_record.get("expires_at") is not None
+                    and token_record["expires_at"] <= now
+                )
+            ):
+                raise UserServiceError("Invalid or expired token.", status.HTTP_401_UNAUTHORIZED)
+            token_record["expires_at"] = expires_at
+            return expires_at
+
     def authenticate_token(self, token: str) -> AuthenticatedUser:
         token_hash = _token_hash(token)
         now = _utcnow()
@@ -409,6 +746,13 @@ class UserService:
                     (token_hash, now),
                 )
                 row = cursor.fetchone()
+                if row:
+                    cursor = connection.cursor()
+                    cursor.execute(
+                        "UPDATE user_devices SET login_time = %s WHERE token_hash = %s AND revoked_at IS NULL",
+                        (now, token_hash),
+                    )
+                    connection.commit()
             if not row:
                 raise UserServiceError("Invalid or expired token.", status.HTTP_401_UNAUTHORIZED)
             return AuthenticatedUser(user=self._profile_from_row(row), token_hash=token_hash)
@@ -422,6 +766,9 @@ class UserService:
                 or (expires_at is not None and expires_at <= now)
             ):
                 raise UserServiceError("Invalid or expired token.", status.HTTP_401_UNAUTHORIZED)
+            device = self._devices.get(token_record["user_id"], {}).get(token_record["device_id"])
+            if device and device.get("revoked_at") is None:
+                device["login_time"] = now
             user_record = self._users[token_record["user_id"]]
             return AuthenticatedUser(user=user_record["profile"], token_hash=token_hash)
 
@@ -444,8 +791,16 @@ class UserService:
             self._users[user_id]["profile"] = profile.model_copy(update={"nickname": nickname})
             return self._users[user_id]["profile"]
 
-    def delete_account(self, user_id: str) -> None:
+    def delete_account(self, user_id: str, *, request: Optional[Request] = None) -> None:
+        self._check_rate_limit("account_delete:user", user_id, limit=3)
         if self._mysql_available:
+            self.get_profile(user_id)
+            self._record_audit_event(
+                event_type="account_deleted",
+                user_id=user_id,
+                request=request,
+                success=True,
+            )
             with self._connect() as connection:
                 cursor = connection.cursor()
                 cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
@@ -474,6 +829,12 @@ class UserService:
                 for token_hash, token in self._tokens.items()
                 if token.get("user_id") != user_id
             }
+        self._record_audit_event(
+            event_type="account_deleted",
+            user_id=user_id,
+            request=request,
+            success=True,
+        )
 
     def update_avatar(self, user_id: str, *, content_type: str, data: bytes) -> str:
         avatar_url = f"/api/v1/user/avatar/{user_id}"
@@ -498,6 +859,22 @@ class UserService:
             self._users[user_id]["profile"] = profile.model_copy(update={"avatar_url": avatar_url})
         return avatar_url
 
+    def update_avatar_preset(self, user_id: str, *, preset_id: str) -> UserProfile:
+        avatar_url = f"material:{preset_id}"
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute("UPDATE users SET avatar_url = %s WHERE id = %s", (avatar_url, user_id))
+                connection.commit()
+            return self.get_profile(user_id)
+
+        with self._lock:
+            if user_id not in self._users:
+                raise UserServiceError("User not found.", status.HTTP_404_NOT_FOUND)
+            profile = self._users[user_id]["profile"]
+            self._users[user_id]["profile"] = profile.model_copy(update={"avatar_url": avatar_url})
+            return self._users[user_id]["profile"]
+
     def get_avatar(self, user_id: str) -> tuple[str, bytes]:
         if self._mysql_available:
             with self._connect() as connection:
@@ -520,7 +897,9 @@ class UserService:
         new_email: str,
         current_email: str,
         verification_token: str,
+        request: Optional[Request] = None,
     ) -> UserProfile:
+        self._check_rate_limit("email_update:user", user_id, limit=8)
         profile = self.get_profile(user_id)
         if _normalize_email(current_email) != profile.email:
             raise UserServiceError("Current email confirmation does not match.", status.HTTP_400_BAD_REQUEST)
@@ -539,7 +918,15 @@ class UserService:
                     cursor.execute("UPDATE users SET email = %s, email_verified = TRUE WHERE id = %s", (email, user_id))
                     connection.commit()
             except Exception as exc:
-                raise UserServiceError("Email is already registered.", status.HTTP_409_CONFLICT) from exc
+                if "1062" in str(exc) or "Duplicate entry" in str(exc):
+                    raise UserServiceError("Email is already registered.", status.HTTP_409_CONFLICT) from exc
+                raise UserServiceError("Unable to update email.", status.HTTP_500_INTERNAL_SERVER_ERROR) from exc
+            self._record_audit_event(
+                event_type="email_changed",
+                user_id=user_id,
+                request=request,
+                success=True,
+            )
             return self.get_profile(user_id)
 
         with self._lock:
@@ -549,16 +936,63 @@ class UserService:
             self._email_index.pop(profile.email, None)
             self._email_index[email] = user_id
             self._users[user_id]["profile"] = profile.model_copy(update={"email": email, "email_verified": True})
-            return self._users[user_id]["profile"]
+            updated_profile = self._users[user_id]["profile"]
+        self._record_audit_event(
+            event_type="email_changed",
+            user_id=user_id,
+            request=request,
+            success=True,
+        )
+        return updated_profile
 
-    def update_password(self, user_id: str, *, current_password: str, new_password: str) -> None:
+    def update_password(self, user_id: str, *, current_password: str, new_password: str, request: Optional[Request] = None) -> None:
+        self._check_rate_limit("password_update:user", user_id, limit=8)
         profile = self.get_profile(user_id)
         _, current_hash = self._get_user_with_password(profile.email)
         if not _verify_password(current_password, current_hash or ""):
             raise UserServiceError("Current password is incorrect.", status.HTTP_400_BAD_REQUEST)
         self._set_password(user_id, _hash_password(new_password))
+        self._record_audit_event(
+            event_type="password_changed",
+            user_id=user_id,
+            request=request,
+            success=True,
+        )
+
+    def revoke_other_tokens(self, user_id: str, current_token_hash: str) -> None:
+        now = _utcnow()
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    """
+                    UPDATE auth_tokens
+                    SET revoked_at = %s
+                    WHERE user_id = %s AND token_hash <> %s AND revoked_at IS NULL
+                    """,
+                    (now, user_id, current_token_hash),
+                )
+                cursor.execute(
+                    """
+                    UPDATE user_devices
+                    SET revoked_at = %s
+                    WHERE user_id = %s AND token_hash <> %s AND revoked_at IS NULL
+                    """,
+                    (now, user_id, current_token_hash),
+                )
+                connection.commit()
+            return
+
+        with self._lock:
+            for token_hash, token in self._tokens.items():
+                if token.get("user_id") == user_id and token_hash != current_token_hash:
+                    token["revoked_at"] = now
+            for device in self._devices.get(user_id, {}).values():
+                if device.get("token_hash") != current_token_hash:
+                    device["revoked_at"] = now
 
     def check_password(self, user_id: str, current_password: str) -> bool:
+        self._check_rate_limit("password_check:user", user_id, limit=20)
         profile = self.get_profile(user_id)
         _, current_hash = self._get_user_with_password(profile.email)
         return _verify_password(current_password, current_hash or "")
@@ -857,17 +1291,22 @@ class UserService:
         ).import_platforms
 
     def list_devices(self, user_id: str, current_token_hash: str) -> list[DeviceInfo]:
+        now = _utcnow()
         if self._mysql_available:
             with self._connect() as connection:
                 cursor = connection.cursor(dictionary=True)
                 cursor.execute(
                     """
-                    SELECT id, device_name, ip_address, login_time, token_hash
-                    FROM user_devices
-                    WHERE user_id = %s AND revoked_at IS NULL
-                    ORDER BY login_time DESC
+                    SELECT d.id, d.device_name, d.ip_address, d.login_time, d.token_hash
+                    FROM user_devices d
+                    JOIN auth_tokens t ON t.token_hash = d.token_hash
+                    WHERE d.user_id = %s
+                      AND d.revoked_at IS NULL
+                      AND t.revoked_at IS NULL
+                      AND (t.expires_at IS NULL OR t.expires_at > %s)
+                    ORDER BY d.login_time DESC
                     """,
-                    (user_id,),
+                    (user_id, now),
                 )
                 rows = cursor.fetchall()
             return [
@@ -891,9 +1330,22 @@ class UserService:
             )
             for device in self._devices.get(user_id, {}).values()
             if device.get("revoked_at") is None
+            and (token := self._tokens.get(device["token_hash"])) is not None
+            and token.get("revoked_at") is None
+            and (
+                token.get("expires_at") is None
+                or token["expires_at"] > now
+            )
         ]
 
-    def revoke_device(self, user_id: str, device_id: str, current_token_hash: str) -> None:
+    def revoke_device(
+        self,
+        user_id: str,
+        device_id: str,
+        current_token_hash: str,
+        *,
+        request: Optional[Request] = None,
+    ) -> None:
         if self._mysql_available:
             with self._connect() as connection:
                 cursor = connection.cursor(dictionary=True)
@@ -913,6 +1365,13 @@ class UserService:
                     (_utcnow(), row["token_hash"]),
                 )
                 connection.commit()
+            self._record_audit_event(
+                event_type="device_revoked",
+                user_id=user_id,
+                request=request,
+                success=True,
+                metadata={"device_id": device_id},
+            )
             return
 
         with self._lock:
@@ -924,6 +1383,13 @@ class UserService:
             device["revoked_at"] = _utcnow()
             if device["token_hash"] in self._tokens:
                 self._tokens[device["token_hash"]]["revoked_at"] = _utcnow()
+        self._record_audit_event(
+            event_type="device_revoked",
+            user_id=user_id,
+            request=request,
+            success=True,
+            metadata={"device_id": device_id},
+        )
 
     def list_favorites(self, user_id: str) -> list[RoutePlan]:
         if self._mysql_available:
@@ -1284,25 +1750,64 @@ def _unauthorized(detail: str = "Authentication required.") -> HTTPException:
 
 
 async def get_optional_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> Optional[AuthenticatedUser]:
-    if credentials is None:
+    if credentials is not None:
+        if not _bearer_auth_enabled():
+            return None
+        try:
+            return get_user_service().authenticate_token(credentials.credentials)
+        except UserServiceError:
+            return None
+    cookie_token = request.cookies.get(settings.auth_cookie_name)
+    if not cookie_token:
         return None
     try:
-        return get_user_service().authenticate_token(credentials.credentials)
+        return get_user_service().authenticate_token(cookie_token)
     except UserServiceError:
         return None
 
 
 async def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> AuthenticatedUser:
-    if credentials is None:
+    if credentials is not None:
+        if not _bearer_auth_enabled():
+            raise _unauthorized("Bearer authentication is disabled.")
+        try:
+            return get_user_service().authenticate_token(credentials.credentials)
+        except UserServiceError as exc:
+            raise _unauthorized(str(exc)) from exc
+    cookie_token = request.cookies.get(settings.auth_cookie_name)
+    if not cookie_token:
         raise _unauthorized()
     try:
-        return get_user_service().authenticate_token(credentials.credentials)
+        return get_user_service().authenticate_token(cookie_token)
     except UserServiceError as exc:
         raise _unauthorized(str(exc)) from exc
+
+
+async def require_csrf(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
+) -> None:
+    if request.method.upper() in SAFE_METHODS:
+        return
+    if credentials is not None and _bearer_auth_enabled():
+        return
+    session_token = request.cookies.get(settings.auth_cookie_name)
+    if not session_token:
+        return
+    csrf_cookie = request.cookies.get(settings.csrf_cookie_name)
+    csrf_header = request.headers.get(settings.csrf_header_name)
+    if not csrf_cookie or not csrf_header:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF token is required.")
+    if not secrets.compare_digest(csrf_cookie, csrf_header):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF token mismatch.")
+    if not _verify_csrf_token(session_token=session_token, csrf_token=csrf_header):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid CSRF token.")
 
 
 async def bearer_credentials(

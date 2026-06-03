@@ -28,6 +28,7 @@ from app.services.user_service import (
     get_current_user,
     get_optional_user,
     get_user_service,
+    require_csrf,
 )
 
 router = APIRouter()
@@ -121,7 +122,7 @@ def confirm_ai_search_session(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.put("/search/ai/sessions/{session_id}", response_model=AISessionSummary)
+@router.put("/search/ai/sessions/{session_id}", response_model=AISessionSummary, dependencies=[Depends(require_csrf)])
 def rename_ai_search_session(
     session_id: str,
     request: AISessionUpdateRequest,
@@ -134,7 +135,7 @@ def rename_ai_search_session(
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
-@router.delete("/search/ai/sessions/{session_id}", response_model=SuccessResponse)
+@router.delete("/search/ai/sessions/{session_id}", response_model=SuccessResponse, dependencies=[Depends(require_csrf)])
 def delete_ai_search_session(
     session_id: str,
     current_user: AuthenticatedUser = Depends(get_current_user),

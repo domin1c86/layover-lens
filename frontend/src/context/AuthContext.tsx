@@ -28,19 +28,17 @@ interface AuthContextType {
   logout: () => Promise<void>
   deleteAccount: () => Promise<void>
   refreshUser: () => Promise<void>
-  setSessionDuration: (duration: SessionDuration) => void
+  setSessionDuration: (duration: SessionDuration) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 function toAuthSession(response: {
-  access_token: string
   user: UserProfile
   expires_at: string | null
   session_duration: SessionDuration
 }): AuthSession {
   return {
-    token: response.access_token,
     user: response.user,
     expiresAt: response.expires_at,
     sessionDuration: response.session_duration,
@@ -66,20 +64,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     const stored = getStoredAuthSession()
-    if (!stored) {
-      setUser(null)
-      return
-    }
 
     setLoading(true)
     try {
       const profile = await authApi.getProfile()
-      const nextSession = { ...stored, user: profile }
+      const nextSession: AuthSession = {
+        user: profile,
+        expiresAt: stored?.expiresAt ?? null,
+        sessionDuration: stored?.sessionDuration ?? getStoredSessionDuration(),
+      }
       saveAuthSession(nextSession)
       setUser(profile)
     } catch {
-      clearAuthSession()
-      setUser(null)
+      if (stored) {
+        clearAuthSession()
+        setUser(null)
+      }
     } finally {
       setLoading(false)
     }
@@ -156,10 +156,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const setSessionDuration = useCallback((duration: SessionDuration) => {
-    setStoredSessionDuration(duration)
-    setSessionDurationState(duration)
-  }, [])
+  const setSessionDuration = useCallback(async (duration: SessionDuration) => {
+    const stored = getStoredAuthSession()
+    if (!stored && !user) {
+      setStoredSessionDuration(duration)
+      setSessionDurationState(duration)
+      return
+    }
+
+    const response = await authApi.updateSessionDuration(duration)
+    const nextSession: AuthSession = {
+      user: stored?.user ?? user!,
+      expiresAt: response.expires_at,
+      sessionDuration: response.session_duration,
+    }
+    saveAuthSession(nextSession)
+    setStoredSessionDuration(response.session_duration)
+    setSessionDurationState(response.session_duration)
+  }, [user])
 
   const value = useMemo<AuthContextType>(
     () => ({

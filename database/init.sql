@@ -145,6 +145,19 @@ CREATE TABLE IF NOT EXISTS bookings (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='预订订单表';
 
+CREATE TABLE IF NOT EXISTS security_audit_logs (
+    id VARCHAR(40) PRIMARY KEY,
+    user_id VARCHAR(40),
+    event_type VARCHAR(80) NOT NULL,
+    ip_address VARCHAR(80) NOT NULL,
+    device_name VARCHAR(255),
+    success BOOLEAN NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    metadata_json TEXT NOT NULL,
+    INDEX idx_audit_user_time (user_id, created_at),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='security audit logs';
+
 -- ============================================
 -- 插入城市数据（40个主要城市）
 -- ============================================

@@ -4,6 +4,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useLocale } from '../../context/LocaleContext';
 import { useAuth } from '../../context/AuthContext';
 import { Icon } from '../../icons';
+import UserAvatar from '../common/UserAvatar';
 import './TopNav.css';
 
 interface TopNavProps {
@@ -135,7 +136,7 @@ export default function TopNav({ activeTab, onTabChange, isCompact = false, comp
                   fontSize: '12px', fontWeight: 600,
                 }}
               >
-                {isLoggedIn ? (user?.username || user?.email || '?')[0].toUpperCase() : <Icon name="status.userPlaceholder" size={14} />}
+                {isLoggedIn ? <UserAvatar user={user} size={28} className="top-nav__avatar" /> : <Icon name="status.userPlaceholder" size={14} />}
               </div>
             </button>
             <div className={`dropdown-menu ${accountOpen ? 'opening' : 'hidden'}`}>

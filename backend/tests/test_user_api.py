@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta
+import re
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from app.config import settings
 from app.data_source import reset_data_source_cache
 from app.main import app
 from app.services import reset_search_service_cache, reset_user_service_cache
@@ -53,6 +55,12 @@ def _register(client: TestClient, email: str | None = None) -> tuple[dict, dict]
     return payload, {"Authorization": f"Bearer {payload['access_token']}"}
 
 
+def _csrf_headers(client: TestClient) -> dict[str, str]:
+    csrf = client.cookies.get(settings.csrf_cookie_name)
+    assert csrf
+    return {settings.csrf_header_name: csrf}
+
+
 def _parse_datetime(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
 
@@ -94,15 +102,20 @@ def test_auth_profile_and_logout_flow() -> None:
 
     assert payload["user"]["email"].endswith("@example.com")
     assert payload["user"]["email_verified"] is True
+    assert re.fullmatch(r"user_\d{14}\d+", payload["user"]["id"])
+    assert payload["user"]["username"] == payload["user"]["id"]
+    assert payload["user"]["nickname"] == "tester"
     assert payload["session_duration"] == "day"
     expires_at = _parse_datetime(payload["expires_at"])
     created_at = _parse_datetime(payload["user"]["created_at"])
     assert timedelta(hours=23, minutes=59) <= expires_at - created_at <= timedelta(days=1, minutes=1)
     profile_response = client.get("/api/v1/user/profile", headers=headers)
     assert profile_response.status_code == 200
-    assert profile_response.json()["username"] == "tester"
+    assert profile_response.json()["username"] == payload["user"]["id"]
+    assert profile_response.json()["nickname"] == "tester"
     assert profile_response.json()["email_verified"] is True
 
+    client.cookies.clear()
     assert client.get("/api/v1/user/profile").status_code == 401
     assert client.post(
         "/api/v1/auth/register",
@@ -116,6 +129,67 @@ def test_auth_profile_and_logout_flow() -> None:
     logout_response = client.post("/api/v1/auth/logout", headers=headers)
     assert logout_response.status_code == 200
     assert client.get("/api/v1/user/profile", headers=headers).status_code == 401
+
+
+def test_cookie_auth_and_csrf_flow() -> None:
+    client = _fresh_client()
+    payload, _ = _register(client, _unique_email("cookie"))
+
+    assert settings.auth_cookie_name in client.cookies
+    assert settings.csrf_cookie_name in client.cookies
+    profile_response = client.get("/api/v1/user/profile")
+    assert profile_response.status_code == 200
+    assert profile_response.json()["id"] == payload["user"]["id"]
+
+    missing_csrf = client.put("/api/v1/user/profile", json={"nickname": "No CSRF"})
+    assert missing_csrf.status_code == 403
+
+    updated = client.put(
+        "/api/v1/user/profile",
+        headers=_csrf_headers(client),
+        json={"nickname": "Cookie User"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["nickname"] == "Cookie User"
+
+    logout = client.post("/api/v1/auth/logout", headers=_csrf_headers(client))
+    assert logout.status_code == 200
+    assert settings.auth_cookie_name not in client.cookies
+    assert client.get("/api/v1/user/profile").status_code == 401
+
+
+def test_login_rate_limit_rejects_repeated_failures() -> None:
+    client = _fresh_client()
+    email = _unique_email("rate")
+    _register(client, email)
+
+    response = None
+    for _ in range(7):
+        response = client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": "wrong-password"},
+        )
+
+    assert response is not None
+    assert response.status_code == 429
+
+
+def test_production_does_not_fallback_to_memory_store(monkeypatch) -> None:
+    from app.services import user_service as user_service_module
+
+    monkeypatch.setattr(user_service_module.settings, "app_env", "production")
+    monkeypatch.setattr(
+        user_service_module.settings,
+        "database_url",
+        "mysql+mysqlconnector://root:wrong@127.0.0.1:1/missing",
+    )
+
+    try:
+        user_service_module.UserService()
+    except RuntimeError as exc:
+        assert "MySQL is required" in str(exc)
+    else:
+        raise AssertionError("Production user service unexpectedly fell back to memory storage.")
 
 
 def test_auth_session_duration_options() -> None:
@@ -152,6 +226,73 @@ def test_auth_session_duration_options() -> None:
     assert forever_response.json()["expires_at"] is None
 
 
+def test_register_generates_time_based_user_ids(monkeypatch) -> None:
+    from app.services import user_service as user_service_module
+
+    base_time = datetime(2026, 5, 6, 7, 8, 9)
+    monkeypatch.setattr(user_service_module, "_utcnow", lambda: base_time)
+    client = _fresh_client()
+
+    first, _ = _register(client, _unique_email("same-second-1"))
+    second, _ = _register(client, _unique_email("same-second-2"))
+    third, _ = _register(client, _unique_email("same-second-3"))
+
+    prefix = "user_20260506150809"
+    first_suffix = int(first["user"]["id"].removeprefix(prefix))
+    assert first["user"]["id"].startswith(prefix)
+    assert second["user"]["id"] == f"{prefix}{first_suffix + 1}"
+    assert third["user"]["id"] == f"{prefix}{first_suffix + 2}"
+    assert first["user"]["username"] == first["user"]["id"]
+    assert first["user"]["nickname"] == "tester"
+
+
+def test_update_current_session_duration() -> None:
+    client = _fresh_client()
+    _, headers = _register(client, _unique_email("duration-update"))
+
+    before = datetime.utcnow()
+    response = client.put(
+        "/api/v1/user/session-duration",
+        headers=headers,
+        json={"session_duration": "week"},
+    )
+    after = datetime.utcnow()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["session_duration"] == "week"
+    expires_at = _parse_datetime(payload["expires_at"])
+    assert before + timedelta(days=7) <= expires_at <= after + timedelta(days=7, seconds=2)
+    assert client.get("/api/v1/user/profile", headers=headers).status_code == 200
+
+    forever_response = client.put(
+        "/api/v1/user/session-duration",
+        headers=headers,
+        json={"session_duration": "forever"},
+    )
+    assert forever_response.status_code == 200
+    assert forever_response.json()["session_duration"] == "forever"
+    assert forever_response.json()["expires_at"] is None
+
+
+def test_authenticated_use_refreshes_current_device_time(monkeypatch) -> None:
+    from app.services import user_service as user_service_module
+
+    base_time = datetime(2026, 1, 1, 9, 0, 0)
+    later_time = datetime(2026, 1, 1, 11, 30, 0)
+    monkeypatch.setattr(user_service_module, "_utcnow", lambda: base_time)
+    client = _fresh_client()
+    _, headers = _register(client, _unique_email("device-touch"))
+
+    monkeypatch.setattr(user_service_module, "_utcnow", lambda: later_time)
+    assert client.get("/api/v1/user/profile", headers=headers).status_code == 200
+    devices = client.get("/api/v1/user/devices", headers=headers)
+
+    assert devices.status_code == 200
+    current_device = next(device for device in devices.json()["devices"] if device["is_current"])
+    assert _parse_datetime(current_device["login_time"]) == later_time
+
+
 def test_expired_auth_token_is_rejected(monkeypatch) -> None:
     from app.services import user_service as user_service_module
 
@@ -179,6 +320,23 @@ def test_delete_account_removes_user_and_invalidates_token() -> None:
     ).status_code == 401
 
 
+def test_update_avatar_preset_updates_profile() -> None:
+    client = _fresh_client()
+    _, headers = _register(client, _unique_email("avatar"))
+
+    response = client.put(
+        "/api/v1/user/avatar/preset",
+        headers=headers,
+        json={"preset_id": "m1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["avatar_url"] == "material:m1"
+    profile = client.get("/api/v1/user/profile", headers=headers)
+    assert profile.status_code == 200
+    assert profile.json()["avatar_url"] == "material:m1"
+
+
 def test_email_verification_change_email_and_password_check() -> None:
     client = _fresh_client()
     email = _unique_email("security")
@@ -203,6 +361,13 @@ def test_email_verification_change_email_and_password_check() -> None:
         headers=headers,
         json={"current_password": "secret123"},
     ).json() == {"valid": True}
+
+    registered_email = _unique_email("registered")
+    _register(client, registered_email)
+    assert client.post(
+        "/api/v1/auth/email-verification/send",
+        json={"email": registered_email, "purpose": "change_email"},
+    ).status_code == 409
 
     new_email = _unique_email("changed")
     change_token = _email_verification_token(client, new_email, "change_email")
@@ -245,6 +410,27 @@ def test_email_verification_change_email_and_password_check() -> None:
         "/api/v1/auth/login",
         json={"email": new_email, "password": "nextsecret123"},
     ).status_code == 200
+
+
+def test_password_change_revokes_other_devices() -> None:
+    client = _fresh_client()
+    email = _unique_email("password-revoke")
+    _, first_headers = _register(client, email)
+    second_login = client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": "secret123"},
+    )
+    assert second_login.status_code == 200
+    second_headers = {"Authorization": f"Bearer {second_login.json()['access_token']}"}
+
+    changed = client.put(
+        "/api/v1/user/password",
+        headers=second_headers,
+        json={"current_password": "secret123", "new_password": "nextsecret123"},
+    )
+    assert changed.status_code == 200
+    assert client.get("/api/v1/user/profile", headers=first_headers).status_code == 401
+    assert client.get("/api/v1/user/profile", headers=second_headers).status_code == 200
 
 
 def test_password_reset_preferences_and_import_platforms() -> None:

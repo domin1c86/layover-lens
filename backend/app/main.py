@@ -5,6 +5,10 @@ from app.config import settings
 from app.routers import auth, bookings, cities, search, user
 from app.services import get_search_service
 
+if settings.app_env.lower() == "production":
+    if "*" in settings.cors_origins or not settings.cors_origins:
+        raise RuntimeError("Production CORS_ORIGINS must be an explicit allowlist.")
+
 app = FastAPI(
     title=settings.app_name,
     description="中转助手 - 多交通方式路径规划 API",
