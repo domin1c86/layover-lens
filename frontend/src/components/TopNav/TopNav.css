@@ -102,6 +102,19 @@
   box-shadow: var(--shadow-card);
 }
 
+.top-nav__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: #ffffff;
+  background: var(--primary);
+}
+
 @media (max-width: 744px) {
   .top-nav__tabs { display: none; }
 }

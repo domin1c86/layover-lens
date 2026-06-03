@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends
 
 from app.schemas import BookingCreateRequest, BookingCreateResponse
-from app.services.user_service import AuthenticatedUser, UserService, get_current_user, get_user_service
+from app.services.user_service import AuthenticatedUser, UserService, get_current_user, get_user_service, require_csrf
 
 router = APIRouter(prefix="/bookings")
 
 
-@router.post("", response_model=BookingCreateResponse)
+@router.post("", response_model=BookingCreateResponse, dependencies=[Depends(require_csrf)])
 def create_booking(
     payload: BookingCreateRequest,
     current_user: AuthenticatedUser = Depends(get_current_user),
@@ -17,4 +17,3 @@ def create_booking(
         payload.route_id,
         [leg.model_dump(mode="json") for leg in payload.legs],
     )
-

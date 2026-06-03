@@ -40,7 +40,6 @@ export function getStoredAuthSession(): AuthSession | null {
   try {
     const session = JSON.parse(raw) as Partial<AuthSession>
     if (
-      typeof session.token !== 'string' ||
       !session.user ||
       !isSessionDuration(session.sessionDuration) ||
       !('expiresAt' in session)
@@ -52,8 +51,7 @@ export function getStoredAuthSession(): AuthSession | null {
       clearAuthSession()
       return null
     }
-    return {
-      token: session.token,
+    const safeSession = {
       user: {
         ...session.user,
         email_verified: session.user.email_verified ?? true,
@@ -61,12 +59,10 @@ export function getStoredAuthSession(): AuthSession | null {
       expiresAt: session.expiresAt ?? null,
       sessionDuration: session.sessionDuration,
     }
+    saveAuthSession(safeSession)
+    return safeSession
   } catch {
     clearAuthSession()
     return null
   }
-}
-
-export function getStoredAuthToken(): string | null {
-  return getStoredAuthSession()?.token ?? null
 }

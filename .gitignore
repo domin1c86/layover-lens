@@ -6,6 +6,7 @@ verify-anim.spec.js
 
 .claude/
 .superpowers/
+.vscode/
 frontend-prototype/
 design-demo/
 docs/

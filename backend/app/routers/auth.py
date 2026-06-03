@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from app.schemas import (
     AuthLoginRequest,
@@ -21,8 +21,11 @@ from app.services.user_service import (
     AuthenticatedUser,
     UserService,
     UserServiceError,
+    clear_auth_cookies,
     get_current_user,
     get_user_service,
+    require_csrf,
+    set_auth_cookies,
 )
 
 router = APIRouter(prefix="/auth")
@@ -36,10 +39,11 @@ def _raise_http(exc: UserServiceError) -> None:
 def register(
     payload: AuthRegisterRequest,
     request: Request,
+    response: Response,
     user_service: UserService = Depends(get_user_service),
 ) -> AuthTokenResponse:
     try:
-        return user_service.register(
+        token_response = user_service.register(
             username=payload.username,
             email=payload.email,
             password=payload.password,
@@ -47,6 +51,8 @@ def register(
             session_duration=payload.session_duration,
             request=request,
         )
+        set_auth_cookies(response, token_response.access_token, token_response.expires_at)
+        return token_response
     except UserServiceError as exc:
         _raise_http(exc)
 
@@ -55,25 +61,30 @@ def register(
 def login(
     payload: AuthLoginRequest,
     request: Request,
+    response: Response,
     user_service: UserService = Depends(get_user_service),
 ) -> AuthTokenResponse:
     try:
-        return user_service.login(
+        token_response = user_service.login(
             email=payload.email,
             password=payload.password,
             session_duration=payload.session_duration,
             request=request,
         )
+        set_auth_cookies(response, token_response.access_token, token_response.expires_at)
+        return token_response
     except UserServiceError as exc:
         _raise_http(exc)
 
 
-@router.post("/logout", response_model=SuccessResponse)
+@router.post("/logout", response_model=SuccessResponse, dependencies=[Depends(require_csrf)])
 def logout(
+    response: Response,
     current_user: AuthenticatedUser = Depends(get_current_user),
     user_service: UserService = Depends(get_user_service),
 ) -> SuccessResponse:
     user_service.logout(current_user.token_hash)
+    clear_auth_cookies(response)
     return SuccessResponse(success=True)
 
 

@@ -9,8 +9,9 @@ import ForgotPasswordModal from './ForgotPasswordModal'
 import type { EmailVerificationPurpose, SessionDuration } from '../../../types'
 
 type PasswordCheckState = 'empty' | 'checking' | 'valid' | 'invalid'
+type SignalState = 'neutral' | 'green' | 'orange' | 'red'
 type EmailDialog = 'verify-current' | 'change-email' | null
-type ChangeEmailStep = 'confirm-old' | 'verify-code' | 'success'
+type ChangeEmailStep = 'confirm-old' | 'verify-code'
 
 function maskEmail(email: string) {
   const [name, domain] = email.split('@')
@@ -20,66 +21,27 @@ function maskEmail(email: string) {
   return `${masked}@${domain}`
 }
 
-function statusClass(state: 'neutral' | 'green' | 'orange' | 'red') {
+function statusClass(state: SignalState) {
   if (state === 'green') return 'verified'
   if (state === 'orange') return 'unverified'
   if (state === 'red') return 'invalid'
   return ''
 }
 
-function copy(lang: 'zh' | 'en') {
-  return {
-    sessionDuration: lang === 'en' ? 'Session duration' : '登录保持时长',
-    sessionHint: lang === 'en'
-      ? 'This applies the next time you sign in. The current session will not be extended automatically.'
-      : '该设置将在下次登录或注册时生效，当前登录不会被自动延长。',
-    durations: {
-      day: lang === 'en' ? 'One day' : '一天',
-      week: lang === 'en' ? 'One week' : '一周',
-      month: lang === 'en' ? 'One month' : '一月',
-      half_year: lang === 'en' ? 'Six months' : '半年',
-      year: lang === 'en' ? 'One year' : '一年',
-      forever: lang === 'en' ? 'Forever' : '永久',
-    } satisfies Record<SessionDuration, string>,
-    verifyEmail: lang === 'en' ? 'Verify email' : '验证邮箱',
-    resetEmail: lang === 'en' ? 'Reset email' : '重置邮箱',
-    confirm: lang === 'en' ? 'Confirm' : '确认',
-    cancel: lang === 'en' ? 'Cancel' : '取消',
-    betaCode: lang === 'en' ? 'Beta code: 000000' : '内测验证码：000000',
-    codePlaceholder: lang === 'en' ? 'Enter verification code' : '请输入验证码',
-    resend: lang === 'en' ? 'Resend' : '重新发送',
-    currentVerifyTitle: lang === 'en' ? 'Verify current email' : '验证当前邮箱',
-    currentVerifyDesc: lang === 'en'
-      ? 'A verification code has been sent to {{email}}. Enter the code to mark this email as verified.'
-      : '验证码已发送至 {{email}}。输入验证码后，该邮箱将标记为已验证。',
-    changeEmailOldTitle: lang === 'en' ? 'Confirm current email' : '确认旧邮箱',
-    changeEmailOldDesc: lang === 'en'
-      ? 'Enter your current email address before a code is sent to the new email.'
-      : '请先输入当前旧邮箱名称，确认后会向新邮箱发送验证码。',
-    currentEmailPlaceholder: lang === 'en' ? 'Current email' : '当前旧邮箱',
-    changeEmailCodeTitle: lang === 'en' ? 'Verify new email' : '验证新邮箱',
-    changeEmailCodeDesc: lang === 'en'
-      ? 'A verification code has been sent to {{email}}. Enter it to finish changing your email.'
-      : '验证码已发送至 {{email}}。输入验证码后完成邮箱重置。',
-    emailVerified: lang === 'en' ? 'Email verified.' : '邮箱验证完成。',
-    emailChanged: lang === 'en' ? 'Email updated.' : '邮箱重置完成。',
-    codeInvalid: lang === 'en' ? 'The verification code is incorrect or expired.' : '验证码错误或已过期。',
-    sendFailed: lang === 'en' ? 'Unable to send verification code.' : '验证码发送失败，请稍后重试。',
-    oldEmailMismatch: lang === 'en' ? 'Current email does not match.' : '旧邮箱名称不匹配。',
-    newEmailInvalid: lang === 'en' ? 'Enter a valid new email.' : '请输入有效的新邮箱。',
-    passwordUpdated: lang === 'en' ? 'Password updated.' : '密码已修改。',
-    passwordFailed: lang === 'en' ? 'Unable to update password.' : '密码修改失败，请稍后重试。',
-    confirmPasswordPlaceholder: lang === 'en' ? 'Confirm new password' : '确认新密码',
-    hidePassword: lang === 'en' ? 'Hide password' : '隐藏密码',
-    showPassword: lang === 'en' ? 'Show password' : '显示密码',
-  }
+function StatusPill({ state, label }: { state: SignalState; label: string }) {
+  return (
+    <span className="settings-panel__status-wrap" tabIndex={0} aria-label={label}>
+      <span className={`settings-panel__status-pill ${statusClass(state)}`} aria-hidden="true" />
+      <span className="settings-panel__status-tooltip" role="tooltip">{label}</span>
+    </span>
+  )
 }
 
 export default function SecurityPanel() {
-  const { lang, t } = useLocale()
-  const texts = copy(lang)
+  const { t } = useLocale()
   const { user, sessionDuration, setSessionDuration, refreshUser } = useAuth()
   const [email, setEmail] = useState(user?.email || '')
+  const [pendingNewEmail, setPendingNewEmail] = useState('')
   const [emailEditing, setEmailEditing] = useState(false)
   const [emailDialog, setEmailDialog] = useState<EmailDialog>(null)
   const [changeEmailStep, setChangeEmailStep] = useState<ChangeEmailStep>('confirm-old')
@@ -98,9 +60,12 @@ export default function SecurityPanel() {
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [currentPasswordStatus, setCurrentPasswordStatus] = useState<PasswordCheckState>('empty')
-  const [passwordMessage, setPasswordMessage] = useState('')
+  const [passwordError, setPasswordError] = useState('')
   const [passwordLoading, setPasswordLoading] = useState(false)
+  const [passwordSuccessOpen, setPasswordSuccessOpen] = useState(false)
   const [showForgotModal, setShowForgotModal] = useState(false)
+  const [sessionUpdating, setSessionUpdating] = useState<SessionDuration | null>(null)
+  const [sessionError, setSessionError] = useState('')
 
   const currentEmail = user?.email || ''
   const targetEmail = email.trim()
@@ -110,15 +75,17 @@ export default function SecurityPanel() {
   }, [user?.email])
 
   useEffect(() => {
-    if (!emailEditing) return
+    if (!emailEditing || emailDialog) return
     const handlePointerDown = (event: MouseEvent) => {
       if (emailEditRef.current?.contains(event.target as Node)) return
       setEmailEditing(false)
       setEmail(currentEmail)
+      setPendingNewEmail('')
+      setEmailError('')
     }
     document.addEventListener('mousedown', handlePointerDown)
     return () => document.removeEventListener('mousedown', handlePointerDown)
-  }, [currentEmail, emailEditing])
+  }, [currentEmail, emailDialog, emailEditing])
 
   useEffect(() => {
     if (emailCountdown <= 0) return
@@ -127,7 +94,7 @@ export default function SecurityPanel() {
   }, [emailCountdown])
 
   useEffect(() => {
-    setPasswordMessage('')
+    setPasswordError('')
     if (!currentPassword) {
       setCurrentPasswordStatus('empty')
       return
@@ -146,32 +113,59 @@ export default function SecurityPanel() {
 
   const durationOptions = useMemo<Array<{ value: SessionDuration; label: string }>>(
     () => ([
-      { value: 'day', label: texts.durations.day },
-      { value: 'week', label: texts.durations.week },
-      { value: 'month', label: texts.durations.month },
-      { value: 'half_year', label: texts.durations.half_year },
-      { value: 'year', label: texts.durations.year },
-      { value: 'forever', label: texts.durations.forever },
+      { value: 'day', label: t('settings.security.sessionDurationDay') },
+      { value: 'week', label: t('settings.security.sessionDurationWeek') },
+      { value: 'month', label: t('settings.security.sessionDurationMonth') },
+      { value: 'half_year', label: t('settings.security.sessionDurationHalfYear') },
+      { value: 'year', label: t('settings.security.sessionDurationYear') },
+      { value: 'forever', label: t('settings.security.sessionDurationForever') },
     ]),
-    [texts.durations]
+    [t]
   )
 
   const isEmailVerified = user?.email_verified ?? false
+  const canConfirmEmailReset = emailEditing
+    && isValidEmail(targetEmail)
+    && targetEmail.toLowerCase() !== currentEmail.toLowerCase()
   const newPasswordStrength = getPasswordStrength(newPassword, currentPassword)
-  const newPasswordLight = newPasswordStrength === 'empty'
+  const newPasswordLight: SignalState = newPasswordStrength === 'empty'
     ? 'neutral'
     : newPasswordStrength === 'weak'
       ? 'red'
       : newPasswordStrength === 'medium'
         ? 'orange'
         : 'green'
-  const confirmPasswordLight = !confirmPassword ? 'neutral' : confirmPassword === newPassword ? 'green' : 'red'
-  const currentPasswordLight = currentPasswordStatus === 'valid'
+  const confirmPasswordLight: SignalState = !confirmPassword ? 'neutral' : confirmPassword === newPassword ? 'green' : 'red'
+  const currentPasswordLight: SignalState = currentPasswordStatus === 'valid'
     ? 'green'
     : currentPasswordStatus === 'invalid'
       ? 'orange'
       : 'neutral'
   const canUpdatePassword = currentPasswordStatus === 'valid' && newPasswordLight !== 'red' && confirmPasswordLight === 'green'
+
+  const emailStatusText = isEmailVerified
+    ? t('settings.security.statusEmailVerified')
+    : t('settings.security.statusEmailUnverified')
+  const currentPasswordStatusText = {
+    empty: t('settings.security.statusCurrentPasswordEmpty'),
+    checking: t('settings.security.statusCurrentPasswordChecking'),
+    valid: t('settings.security.statusCurrentPasswordValid'),
+    invalid: t('settings.security.statusCurrentPasswordInvalid'),
+  }[currentPasswordStatus]
+  const newPasswordStatusText = !newPassword
+    ? t('settings.security.statusNewPasswordEmpty')
+    : currentPassword && newPassword === currentPassword
+      ? t('settings.security.statusNewPasswordSame')
+      : newPasswordStrength === 'weak'
+        ? t('settings.security.statusNewPasswordWeak')
+        : newPasswordStrength === 'medium'
+          ? t('settings.security.statusNewPasswordMedium')
+          : t('settings.security.statusNewPasswordStrong')
+  const confirmPasswordStatusText = !confirmPassword
+    ? t('settings.security.statusConfirmPasswordEmpty')
+    : confirmPassword === newPassword
+      ? t('settings.security.statusConfirmPasswordValid')
+      : t('settings.security.statusConfirmPasswordInvalid')
 
   const resetEmailDialog = () => {
     setEmailDialog(null)
@@ -200,7 +194,7 @@ export default function SecurityPanel() {
     try {
       await sendEmailCode(currentEmail, 'verify_current')
     } catch (err) {
-      setEmailError(getApiErrorMessage(err, texts.sendFailed))
+      setEmailError(getApiErrorMessage(err, t('settings.security.sendFailed')))
     } finally {
       setEmailLoading(false)
     }
@@ -208,14 +202,17 @@ export default function SecurityPanel() {
 
   const startEmailReset = () => {
     setEmail('')
+    setPendingNewEmail('')
     setEmailEditing(true)
+    setEmailError('')
   }
 
   const confirmEmailReset = () => {
     if (!isValidEmail(targetEmail) || targetEmail.toLowerCase() === currentEmail.toLowerCase()) {
-      setEmailError(texts.newEmailInvalid)
+      setEmailError(t('settings.security.newEmailInvalid'))
       return
     }
+    setPendingNewEmail(targetEmail)
     setEmailDialog('change-email')
     setChangeEmailStep('confirm-old')
     setOldEmailInput('')
@@ -226,44 +223,45 @@ export default function SecurityPanel() {
 
   const confirmOldEmailAndSendCode = async () => {
     if (oldEmailInput.trim().toLowerCase() !== currentEmail.toLowerCase()) {
-      setEmailError(texts.oldEmailMismatch)
+      setEmailError(t('settings.security.oldEmailMismatch'))
       return
     }
     setEmailLoading(true)
     setEmailError('')
     try {
-      await sendEmailCode(targetEmail, 'change_email')
+      await sendEmailCode(pendingNewEmail, 'change_email')
       setChangeEmailStep('verify-code')
     } catch (err) {
-      setEmailError(getApiErrorMessage(err, texts.sendFailed))
+      setEmailError(getApiErrorMessage(err, t('settings.security.sendFailed')))
     } finally {
       setEmailLoading(false)
     }
   }
 
   const verifyEmailCode = async () => {
-    const purpose: EmailVerificationPurpose = emailDialog === 'change-email' ? 'change_email' : 'verify_current'
-    const mail = emailDialog === 'change-email' ? targetEmail : currentEmail
+    const isChangeEmail = emailDialog === 'change-email'
+    const purpose: EmailVerificationPurpose = isChangeEmail ? 'change_email' : 'verify_current'
+    const mail = isChangeEmail ? pendingNewEmail : currentEmail
     setEmailLoading(true)
     setEmailError('')
     try {
       const result = await authApi.verifyEmailVerificationCode(mail, emailCode.trim(), purpose)
       if (!result.verified || !result.verification_token) {
-        setEmailError(texts.codeInvalid)
+        setEmailError(t('settings.security.codeInvalid'))
         return
       }
-      if (emailDialog === 'change-email') {
-        await authApi.updateEmail(currentEmail, targetEmail, result.verification_token)
-        setEmailSuccess(texts.emailChanged)
+      if (isChangeEmail) {
+        await authApi.updateEmail(currentEmail, pendingNewEmail, result.verification_token)
+        setEmailSuccess(t('settings.security.emailChanged'))
         setEmailEditing(false)
       } else {
         await authApi.verifyCurrentEmail(result.verification_token)
-        setEmailSuccess(texts.emailVerified)
+        setEmailSuccess(t('settings.security.emailVerifiedDone'))
       }
       await refreshUser()
       setTimeout(resetEmailDialog, 900)
     } catch (err) {
-      setEmailError(getApiErrorMessage(err, texts.codeInvalid))
+      setEmailError(getApiErrorMessage(err, t('settings.security.codeInvalid')))
     } finally {
       setEmailLoading(false)
     }
@@ -274,29 +272,46 @@ export default function SecurityPanel() {
     setEmailError('')
     try {
       await sendEmailCode(
-        emailDialog === 'change-email' ? targetEmail : currentEmail,
+        emailDialog === 'change-email' ? pendingNewEmail : currentEmail,
         emailDialog === 'change-email' ? 'change_email' : 'verify_current'
       )
     } catch (err) {
-      setEmailError(getApiErrorMessage(err, texts.sendFailed))
+      setEmailError(getApiErrorMessage(err, t('settings.security.sendFailed')))
     } finally {
       setEmailLoading(false)
     }
   }
 
+  const handleSessionDurationChange = async (duration: SessionDuration) => {
+    if (duration === sessionDuration || sessionUpdating) return
+    setSessionUpdating(duration)
+    setSessionError('')
+    try {
+      await setSessionDuration(duration)
+    } catch (err) {
+      setSessionError(getApiErrorMessage(err, t('settings.security.sessionUpdateFailed')))
+    } finally {
+      setSessionUpdating(null)
+    }
+  }
+
+  const closePasswordSuccess = () => {
+    setPasswordSuccessOpen(false)
+    setCurrentPassword('')
+    setNewPassword('')
+    setConfirmPassword('')
+    setCurrentPasswordStatus('empty')
+  }
+
   const handleUpdatePassword = async () => {
     if (!canUpdatePassword) return
     setPasswordLoading(true)
-    setPasswordMessage('')
+    setPasswordError('')
     try {
       await authApi.updatePassword(currentPassword, newPassword)
-      setPasswordMessage(texts.passwordUpdated)
-      setCurrentPassword('')
-      setNewPassword('')
-      setConfirmPassword('')
-      setCurrentPasswordStatus('empty')
+      setPasswordSuccessOpen(true)
     } catch (err) {
-      setPasswordMessage(getApiErrorMessage(err, texts.passwordFailed))
+      setPasswordError(getApiErrorMessage(err, t('settings.security.passwordFailed')))
     } finally {
       setPasswordLoading(false)
     }
@@ -323,7 +338,7 @@ export default function SecurityPanel() {
         className="auth-modal__toggle-pw"
         type="button"
         onClick={() => setVisible(!visible)}
-        aria-label={visible ? texts.hidePassword : texts.showPassword}
+        aria-label={visible ? t('settings.security.hidePassword') : t('settings.security.showPassword')}
       >
         <Icon name={visible ? 'actions.eyeOff' : 'actions.eyeOn'} size={16} />
       </button>
@@ -331,37 +346,41 @@ export default function SecurityPanel() {
   )
 
   const emailDialogTitle = emailDialog === 'change-email'
-    ? changeEmailStep === 'confirm-old' ? texts.changeEmailOldTitle : texts.changeEmailCodeTitle
-    : texts.currentVerifyTitle
+    ? changeEmailStep === 'confirm-old'
+      ? t('settings.security.changeEmailOldTitle')
+      : t('settings.security.changeEmailCodeTitle')
+    : t('settings.security.currentVerifyTitle')
   const emailDialogDesc = emailDialog === 'change-email'
     ? changeEmailStep === 'confirm-old'
-      ? texts.changeEmailOldDesc
-      : texts.changeEmailCodeDesc.replace('{{email}}', targetEmail)
-    : texts.currentVerifyDesc.replace('{{email}}', maskEmail(currentEmail))
+      ? t('settings.security.changeEmailOldDesc')
+      : t('settings.security.changeEmailCodeDesc', { email: pendingNewEmail })
+    : t('settings.security.currentVerifyDesc', { email: maskEmail(currentEmail) })
 
   return (
     <div className="settings-panel">
       <div className="settings-panel__section">
-        <div className="settings-panel__label">{texts.sessionDuration}</div>
+        <div className="settings-panel__label">{t('settings.security.sessionDuration')}</div>
         <div className="settings-panel__options">
           {durationOptions.map((option) => (
             <button
               key={option.value}
               className={`settings-panel__option ${sessionDuration === option.value ? 'active' : ''}`}
               type="button"
-              onClick={() => setSessionDuration(option.value)}
+              onClick={() => void handleSessionDurationChange(option.value)}
+              disabled={sessionUpdating !== null}
             >
-              {option.label}
+              {sessionUpdating === option.value ? '...' : option.label}
             </button>
           ))}
         </div>
-        <p className="settings-panel__hint">{texts.sessionHint}</p>
+        <p className="settings-panel__hint">{t('settings.security.sessionHint')}</p>
+        {sessionError && <p className="forgot-modal__error">{sessionError}</p>}
       </div>
 
       <div className="settings-panel__section">
         <div className="settings-panel__label">{t('settings.security.email')}</div>
         <div className="settings-panel__row" ref={emailEditRef}>
-          <div className={`settings-panel__status-pill ${statusClass(isEmailVerified ? 'green' : 'orange')}`} />
+          <StatusPill state={isEmailVerified ? 'green' : 'orange'} label={emailStatusText} />
           <input
             className="settings-panel__input"
             type="email"
@@ -376,15 +395,16 @@ export default function SecurityPanel() {
               onClick={openVerifyCurrentEmail}
               type="button"
             >
-              {texts.verifyEmail}
+              {t('settings.security.verifyEmail')}
             </button>
           )}
           <button
-            className="settings-panel__btn settings-panel__btn--gray"
+            className={`settings-panel__btn ${emailEditing && canConfirmEmailReset ? 'settings-panel__btn--password-ready' : 'settings-panel__btn--gray'} ${emailEditing ? '' : 'settings-panel__btn--email-reset'}`}
             onClick={emailEditing ? confirmEmailReset : startEmailReset}
             type="button"
+            disabled={emailEditing && !canConfirmEmailReset}
           >
-            {emailEditing ? texts.confirm : texts.resetEmail}
+            {emailEditing ? t('settings.security.confirm') : t('settings.security.emailReset')}
           </button>
         </div>
         {emailError && !emailDialog && <p className="forgot-modal__error">{emailError}</p>}
@@ -394,7 +414,7 @@ export default function SecurityPanel() {
         <div className="settings-panel__label">{t('settings.security.changePasswordTitle')}</div>
         <div className="settings-panel__row settings-panel__row--stack">
           <div className="settings-panel__row">
-            <div className={`settings-panel__status-pill ${statusClass(currentPasswordLight)}`} />
+            <StatusPill state={currentPasswordLight} label={currentPasswordStatusText} />
             {passwordInput(
               currentPassword,
               setCurrentPassword,
@@ -405,7 +425,7 @@ export default function SecurityPanel() {
             )}
           </div>
           <div className="settings-panel__row">
-            <div className={`settings-panel__status-pill ${statusClass(newPasswordLight)}`} />
+            <StatusPill state={newPasswordLight} label={newPasswordStatusText} />
             {passwordInput(
               newPassword,
               setNewPassword,
@@ -415,20 +435,23 @@ export default function SecurityPanel() {
               'new-password'
             )}
           </div>
+          <p className="settings-panel__hint settings-panel__password-hint">
+            {t('settings.security.passwordCompositionHint')}
+          </p>
           <div className="settings-panel__row">
-            <div className={`settings-panel__status-pill ${statusClass(confirmPasswordLight)}`} />
+            <StatusPill state={confirmPasswordLight} label={confirmPasswordStatusText} />
             {passwordInput(
               confirmPassword,
               setConfirmPassword,
-              texts.confirmPasswordPlaceholder,
+              t('settings.security.passwordConfirmPlaceholder'),
               showConfirmPassword,
               setShowConfirmPassword,
               'new-password'
             )}
           </div>
-          {passwordMessage && <p className="settings-panel__hint">{passwordMessage}</p>}
+          {passwordError && <p className="forgot-modal__error">{passwordError}</p>}
           <button
-            className={`settings-panel__btn ${canUpdatePassword ? 'settings-panel__btn--primary' : 'settings-panel__btn--gray'}`}
+            className={`settings-panel__btn ${canUpdatePassword ? 'settings-panel__btn--password-ready' : 'settings-panel__btn--gray'}`}
             type="button"
             onClick={handleUpdatePassword}
             disabled={!canUpdatePassword || passwordLoading}
@@ -450,7 +473,7 @@ export default function SecurityPanel() {
       >
         <div className="forgot-modal__header">
           <h3 className="forgot-modal__title">{emailDialogTitle}</h3>
-          <button className="forgot-modal__close" onClick={resetEmailDialog} type="button" aria-label="Close">
+          <button className="forgot-modal__close" onClick={resetEmailDialog} type="button" aria-label={t('settings.security.close')}>
             <Icon name="actions.closeEmoji" />
           </button>
         </div>
@@ -463,7 +486,7 @@ export default function SecurityPanel() {
                 type="email"
                 value={oldEmailInput}
                 onChange={(event) => { setOldEmailInput(event.target.value); setEmailError('') }}
-                placeholder={texts.currentEmailPlaceholder}
+                placeholder={t('settings.security.currentEmailPlaceholder')}
               />
               {emailError && <p className="forgot-modal__error">{emailError}</p>}
               <button
@@ -472,18 +495,18 @@ export default function SecurityPanel() {
                 onClick={confirmOldEmailAndSendCode}
                 disabled={emailLoading}
               >
-                {emailLoading ? '...' : texts.confirm}
+                {emailLoading ? '...' : t('settings.security.confirm')}
               </button>
             </>
           ) : (
             <>
-              <p className="settings-panel__hint" style={{ margin: 0 }}>{texts.betaCode}</p>
+              <p className="settings-panel__hint" style={{ margin: 0 }}>{t('settings.security.betaCode')}</p>
               <input
                 className="settings-panel__input"
                 type="text"
                 value={emailCode}
                 onChange={(event) => { setEmailCode(event.target.value); setEmailError('') }}
-                placeholder={texts.codePlaceholder}
+                placeholder={t('settings.security.codePlaceholder')}
                 maxLength={12}
               />
               {emailSuccess && <p className="forgot-modal__success">{emailSuccess}</p>}
@@ -495,7 +518,7 @@ export default function SecurityPanel() {
                   onClick={verifyEmailCode}
                   disabled={emailLoading || !emailCode.trim()}
                 >
-                  {emailLoading ? '...' : texts.confirm}
+                  {emailLoading ? '...' : t('settings.security.confirm')}
                 </button>
                 <button
                   className="settings-panel__btn settings-panel__btn--gray"
@@ -503,11 +526,36 @@ export default function SecurityPanel() {
                   disabled={emailLoading || emailCountdown > 0}
                   onClick={resendDialogCode}
                 >
-                  {emailCountdown > 0 ? `${texts.resend} (${emailCountdown}s)` : texts.resend}
+                  {emailCountdown > 0 ? `${t('settings.security.resend')} (${emailCountdown}s)` : t('settings.security.resend')}
                 </button>
               </div>
             </>
           )}
+        </div>
+      </AnimatedModal>
+
+      <AnimatedModal
+        isOpen={passwordSuccessOpen}
+        overlayClassName="forgot-modal__overlay"
+        dialogClassName="forgot-modal__dialog"
+        ariaLabel={t('settings.security.passwordSuccessTitle')}
+        onClose={closePasswordSuccess}
+      >
+        <div className="forgot-modal__header">
+          <h3 className="forgot-modal__title">{t('settings.security.passwordSuccessTitle')}</h3>
+          <button className="forgot-modal__close" onClick={closePasswordSuccess} type="button" aria-label={t('settings.security.close')}>
+            <Icon name="actions.closeEmoji" />
+          </button>
+        </div>
+        <div className="forgot-modal__body">
+          <p className="forgot-modal__success">{t('settings.security.passwordSuccessDesc')}</p>
+          <button
+            className="settings-panel__btn settings-panel__btn--primary"
+            type="button"
+            onClick={closePasswordSuccess}
+          >
+            {t('settings.security.confirm')}
+          </button>
         </div>
       </AnimatedModal>
 

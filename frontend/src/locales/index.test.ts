@@ -43,4 +43,108 @@ describe('dictionary', () => {
     }
     checkMirror(dict.zh, dict.en, 'dict')
   })
+
+  it('contains account security copy required by verified flows', () => {
+    const keys = [
+      'sessionDuration',
+      'sessionHint',
+      'sessionUpdateFailed',
+      'statusEmailVerified',
+      'statusEmailUnverified',
+      'statusCurrentPasswordEmpty',
+      'statusCurrentPasswordValid',
+      'statusCurrentPasswordInvalid',
+      'statusNewPasswordSame',
+      'statusNewPasswordWeak',
+      'statusNewPasswordMedium',
+      'statusNewPasswordStrong',
+      'statusConfirmPasswordValid',
+      'statusConfirmPasswordInvalid',
+      'passwordCompositionHint',
+      'passwordSuccessTitle',
+      'passwordSuccessDesc',
+      'changeEmailOldTitle',
+      'changeEmailCodeTitle',
+      'oldEmailMismatch',
+      'newEmailInvalid',
+    ]
+
+    for (const key of keys) {
+      expect(dict.zh.settings.security).toHaveProperty(key)
+      expect(dict.en.settings.security).toHaveProperty(key)
+      expect(dict.zh.settings.security[key as keyof typeof dict.zh.settings.security]).toBeTruthy()
+      expect(dict.en.settings.security[key as keyof typeof dict.en.settings.security]).toBeTruthy()
+    }
+  })
+
+  it('contains account settings copy required by profile flows', () => {
+    const keys = [
+      'nickname',
+      'nicknamePlaceholder',
+      'saveNickname',
+      'nicknameSaved',
+      'nicknameRequired',
+      'nicknameSaveFailed',
+      'avatar',
+      'changeAvatar',
+      'avatarDialogTitle',
+      'avatarUploadLine1',
+      'avatarUploadLine2',
+      'avatarLocalOption',
+      'avatarPresetOption',
+      'avatarSaveFailed',
+      'avatarInvalidFile',
+      'avatarCropTitle',
+      'avatarCropFailed',
+      'avatarZoomIn',
+      'avatarZoomOut',
+      'avatarMoveLeft',
+      'avatarMoveRight',
+      'avatarMoveUp',
+      'avatarMoveDown',
+      'username',
+      'usernameDesc',
+      'dangerZone',
+      'deleteHint',
+      'deleteAccount',
+      'deleteTitle',
+      'deleteMessage',
+      'deleteFinalTitle',
+      'deleteFinalMessage',
+      'deleteFailed',
+      'cancel',
+      'confirm',
+    ]
+
+    for (const key of keys) {
+      expect(dict.zh.settings.account).toHaveProperty(key)
+      expect(dict.en.settings.account).toHaveProperty(key)
+      expect(dict.zh.settings.account[key as keyof typeof dict.zh.settings.account]).toBeTruthy()
+      expect(dict.en.settings.account[key as keyof typeof dict.en.settings.account]).toBeTruthy()
+    }
+  })
+
+  it('contains device management copy', () => {
+    const keys = [
+      'title',
+      'current',
+      'deviceName',
+      'loginTime',
+      'ipAddress',
+      'logout',
+      'loading',
+      'loadFailed',
+      'revokeFailed',
+      'unknownPlatform',
+      'unknownIp',
+      'noDevices',
+    ]
+
+    for (const key of keys) {
+      expect(dict.zh.settings.devices).toHaveProperty(key)
+      expect(dict.en.settings.devices).toHaveProperty(key)
+      expect(dict.zh.settings.devices[key as keyof typeof dict.zh.settings.devices]).toBeTruthy()
+      expect(dict.en.settings.devices[key as keyof typeof dict.en.settings.devices]).toBeTruthy()
+    }
+  })
 })

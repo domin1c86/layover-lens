@@ -4,7 +4,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "3200:3000"
     depends_on:
       backend:
         condition: service_healthy
@@ -24,6 +24,13 @@ services:
       - "0.0.0.0:8000:8000"
     environment:
       - DATABASE_URL=mysql+mysqlconnector://root:devpassword@mysql:3306/layover_lens
+      - APP_ENV=development
+      - CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000","http://localhost:3200","http://127.0.0.1:3200"]
+      - SESSION_COOKIE_SECRET=${SESSION_COOKIE_SECRET:-dev-session-cookie-secret}
+      - CSRF_SECRET=${CSRF_SECRET:-dev-csrf-secret}
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-false}
+      - SESSION_COOKIE_SAMESITE=${SESSION_COOKIE_SAMESITE:-lax}
+      - DISABLE_BEARER_AUTH_IN_PRODUCTION=${DISABLE_BEARER_AUTH_IN_PRODUCTION:-true}
       - DATA_SOURCE=mock
       - ROUTE_PLANNER_BACKEND=cpp
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
