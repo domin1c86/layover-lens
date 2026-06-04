@@ -514,6 +514,7 @@ export default function SecurityPanel() {
             {user?.totp_enabled ? t('settings.security.totpDisable') : t('settings.security.totpEnable')}
           </button>
         </div>
+        {emailError && !emailDialog && <p className="forgot-modal__error">{emailError}</p>}
       </div>
 
       <div className="settings-panel__section">
