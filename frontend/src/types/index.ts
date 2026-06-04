@@ -119,6 +119,7 @@ export interface UserProfile {
   username: string;
   email: string;
   email_verified: boolean;
+  totp_enabled: boolean;
   nickname?: string | null;
   avatar_url?: string | null;
   created_at: string;
@@ -139,11 +140,25 @@ export interface AuthRegisterRequest {
 }
 
 export interface AuthTokenResponse {
+  requires_totp: false;
   user: UserProfile;
   access_token: string;
   token_type: 'bearer';
   expires_at: string | null;
   session_duration: SessionDuration;
+}
+
+export interface AuthTotpChallengeResponse {
+  requires_totp: true;
+  challenge_token: string;
+  expires_in_seconds: number;
+}
+
+export type AuthLoginResponse = AuthTokenResponse | AuthTotpChallengeResponse;
+
+export interface TotpSetupResponse {
+  secret: string;
+  provisioning_uri: string;
 }
 
 export interface SessionDurationUpdateResponse {

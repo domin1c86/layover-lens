@@ -9,6 +9,9 @@ const authApiMock = vi.hoisted(() => ({
   verifyCurrentEmail: vi.fn(),
   checkPassword: vi.fn(),
   updatePassword: vi.fn(),
+  setupTotp: vi.fn(),
+  enableTotp: vi.fn(),
+  disableTotp: vi.fn(),
 }))
 
 const authState = vi.hoisted(() => ({
@@ -17,6 +20,7 @@ const authState = vi.hoisted(() => ({
     username: 'tester',
     email: 'old@example.com',
     email_verified: false,
+    totp_enabled: false,
     created_at: '2026-01-01T00:00:00',
   },
   sessionDuration: 'day',
@@ -81,6 +85,28 @@ const messages: Record<string, string> = {
   'settings.security.statusConfirmPasswordValid': 'The confirmation password matches.',
   'settings.security.statusConfirmPasswordInvalid': 'The confirmation password does not match.',
   'settings.security.forgotPassword': 'Forgot password?',
+  'settings.security.totpTitle': 'Authenticator two-factor authentication',
+  'settings.security.totpEnabledStatus': 'TOTP enabled.',
+  'settings.security.totpDisabledStatus': 'TOTP disabled.',
+  'settings.security.totpEnabledDesc': 'Code required.',
+  'settings.security.totpDisabledDesc': 'Enable a code.',
+  'settings.security.totpEnable': 'Enable',
+  'settings.security.totpDisable': 'Disable',
+  'settings.security.totpSetupTitle': 'Enable authenticator',
+  'settings.security.totpDisableTitle': 'Disable authenticator',
+  'settings.security.totpPasswordDesc': 'Enter password.',
+  'settings.security.totpSetupDesc': 'Add secret.',
+  'settings.security.totpQrSetupDesc': 'Scan QR code.',
+  'settings.security.totpQrCodeLabel': 'Authenticator setup QR code',
+  'settings.security.totpUseSecret': 'Unable to scan? Try using the secret',
+  'settings.security.totpUseQr': 'Not convenient? Try using the QR code',
+  'settings.security.totpCopySecret': 'Copy secret',
+  'settings.security.totpCodePlaceholder': 'Enter authenticator code',
+  'settings.security.totpVerifyEnable': 'Verify and enable',
+  'settings.security.totpDisableDesc': 'Enter password and code.',
+  'settings.security.totpSetupFailed': 'Setup failed.',
+  'settings.security.totpCodeInvalid': 'Invalid code.',
+  'settings.security.totpDisableFailed': 'Disable failed.',
 }
 
 vi.mock('../../../context/LocaleContext', () => ({
@@ -115,12 +141,15 @@ describe('SecurityPanel', () => {
       username: 'tester',
       email: 'old@example.com',
       email_verified: false,
+      totp_enabled: false,
       created_at: '2026-01-01T00:00:00',
     }
     authState.sessionDuration = 'day'
     authApiMock.sendEmailVerificationCode.mockResolvedValue({ expires_in_seconds: 60 })
     authApiMock.checkPassword.mockResolvedValue(true)
     authApiMock.updatePassword.mockResolvedValue(undefined)
+    authApiMock.setupTotp.mockResolvedValue({ secret: 'SECRET123', provisioning_uri: 'otpauth://totp/test' })
+    authApiMock.enableTotp.mockResolvedValue({ ...authState.user, totp_enabled: true })
   })
 
   it('shows status explanations and password composition hint', () => {
@@ -197,5 +226,60 @@ describe('SecurityPanel', () => {
 
     await waitFor(() => expect(authApiMock.updatePassword).toHaveBeenCalledWith('oldpass123', 'Newpass123!'))
     expect(await screen.findByText('Password updated successfully')).toBeInTheDocument()
+  })
+
+  it('opens the TOTP setup entry and enables it after code verification', async () => {
+    render(<SecurityPanel />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enable' }))
+    const dialog = screen.getByRole('dialog', { name: 'Authenticator two-factor authentication' })
+    const passwordInputs = within(dialog).getAllByPlaceholderText('Current password')
+    fireEvent.change(passwordInputs[0], { target: { value: 'secret123' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
+
+    await waitFor(() => expect(authApiMock.setupTotp).toHaveBeenCalledWith('secret123'))
+    expect(await within(dialog).findByText('Scan QR code.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Authenticator setup QR code')).toBeInTheDocument()
+    const enableButton = within(dialog).getByRole('button', { name: 'Verify and enable' })
+    expect(enableButton).toBeDisabled()
+    expect(enableButton).toHaveClass('settings-panel__btn--gray')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Unable to scan? Try using the secret' }))
+    expect(await within(dialog).findByText('SECRET123')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Copy secret' })).toHaveClass('settings-panel__btn--totp-action')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Not convenient? Try using the QR code' }))
+    expect(await within(dialog).findByText('Scan QR code.')).toBeInTheDocument()
+    fireEvent.change(within(dialog).getByPlaceholderText('Enter authenticator code'), {
+      target: { value: '123 456' },
+    })
+    expect(enableButton).not.toBeDisabled()
+    expect(enableButton).toHaveClass('settings-panel__btn--password-ready')
+    fireEvent.click(enableButton)
+
+    await waitFor(() => expect(authApiMock.enableTotp).toHaveBeenCalledWith('123456'))
+    await waitFor(() => expect(authState.refreshUser).toHaveBeenCalled())
+  })
+
+  it('highlights the TOTP disable action only after password and six digits', () => {
+    authState.user = { ...authState.user, totp_enabled: true }
+    render(<SecurityPanel />)
+
+    const entryButton = screen.getByRole('button', { name: 'Disable' })
+    expect(entryButton).toHaveClass('settings-panel__btn--totp-action')
+    fireEvent.click(entryButton)
+
+    const dialog = screen.getByRole('dialog', { name: 'Authenticator two-factor authentication' })
+    const disableButton = within(dialog).getByRole('button', { name: 'Disable' })
+    expect(disableButton).toBeDisabled()
+    expect(disableButton).toHaveClass('settings-panel__btn--gray')
+
+    fireEvent.change(within(dialog).getByPlaceholderText('Current password'), {
+      target: { value: 'secret123' },
+    })
+    fireEvent.change(within(dialog).getByPlaceholderText('Enter authenticator code'), {
+      target: { value: '123 456' },
+    })
+
+    expect(disableButton).not.toBeDisabled()
+    expect(disableButton).toHaveClass('settings-panel__btn--password-ready')
   })
 })

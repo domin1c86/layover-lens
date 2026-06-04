@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     csrf_header_name: str = Field(default="X-CSRF-Token", alias="CSRF_HEADER_NAME")
     session_cookie_secret: str = Field(default="dev-session-cookie-secret", alias="SESSION_COOKIE_SECRET")
     csrf_secret: str = Field(default="dev-csrf-secret", alias="CSRF_SECRET")
+    totp_encryption_secret: str = Field(default="dev-totp-encryption-secret", alias="TOTP_ENCRYPTION_SECRET")
+    totp_issuer_name: str = Field(default="Layover Lens", alias="TOTP_ISSUER_NAME")
     session_cookie_secure: bool = Field(default=False, alias="SESSION_COOKIE_SECURE")
     session_cookie_samesite: str = Field(default="lax", alias="SESSION_COOKIE_SAMESITE")
     disable_bearer_auth_in_production: bool = Field(default=True, alias="DISABLE_BEARER_AUTH_IN_PRODUCTION")

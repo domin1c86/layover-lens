@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { QRCodeSVG } from 'qrcode.react'
 import { useLocale } from '../../../context/LocaleContext'
 import { useAuth } from '../../../context/AuthContext'
 import { Icon } from '../../../icons'
@@ -12,6 +13,12 @@ type PasswordCheckState = 'empty' | 'checking' | 'valid' | 'invalid'
 type SignalState = 'neutral' | 'green' | 'orange' | 'red'
 type EmailDialog = 'verify-current' | 'change-email' | null
 type ChangeEmailStep = 'confirm-old' | 'verify-code'
+type TotpDialog = 'setup-password' | 'setup-code' | 'disable' | null
+type TotpSetupMethod = 'qr' | 'secret'
+
+function normalizeTotpCode(value: string) {
+  return value.replace(/\s/g, '').replace(/\D/g, '').slice(0, 6)
+}
 
 function maskEmail(email: string) {
   const [name, domain] = email.split('@')
@@ -66,6 +73,14 @@ export default function SecurityPanel() {
   const [showForgotModal, setShowForgotModal] = useState(false)
   const [sessionUpdating, setSessionUpdating] = useState<SessionDuration | null>(null)
   const [sessionError, setSessionError] = useState('')
+  const [totpDialog, setTotpDialog] = useState<TotpDialog>(null)
+  const [totpPassword, setTotpPassword] = useState('')
+  const [totpCode, setTotpCode] = useState('')
+  const [totpSecret, setTotpSecret] = useState('')
+  const [totpProvisioningUri, setTotpProvisioningUri] = useState('')
+  const [totpSetupMethod, setTotpSetupMethod] = useState<TotpSetupMethod>('qr')
+  const [totpError, setTotpError] = useState('')
+  const [totpLoading, setTotpLoading] = useState(false)
 
   const currentEmail = user?.email || ''
   const targetEmail = email.trim()
@@ -142,6 +157,8 @@ export default function SecurityPanel() {
       ? 'orange'
       : 'neutral'
   const canUpdatePassword = currentPasswordStatus === 'valid' && newPasswordLight !== 'red' && confirmPasswordLight === 'green'
+  const canEnableTotp = totpCode.length === 6
+  const canDisableTotp = totpPassword.trim().length > 0 && totpCode.length === 6
 
   const emailStatusText = isEmailVerified
     ? t('settings.security.statusEmailVerified')
@@ -303,6 +320,75 @@ export default function SecurityPanel() {
     setCurrentPasswordStatus('empty')
   }
 
+  const resetTotpDialog = () => {
+    setTotpDialog(null)
+    setTotpPassword('')
+    setTotpCode('')
+    setTotpSecret('')
+    setTotpProvisioningUri('')
+    setTotpSetupMethod('qr')
+    setTotpError('')
+    setTotpLoading(false)
+  }
+
+  const beginTotpSetup = async () => {
+    if (!totpPassword) return
+    setTotpLoading(true)
+    setTotpError('')
+    try {
+      const result = await authApi.setupTotp(totpPassword)
+      setTotpSecret(result.secret)
+      setTotpProvisioningUri(result.provisioning_uri)
+      setTotpSetupMethod('qr')
+      setTotpCode('')
+      setTotpDialog('setup-code')
+    } catch (err) {
+      setTotpError(getApiErrorMessage(err, t('settings.security.totpSetupFailed')))
+    } finally {
+      setTotpLoading(false)
+    }
+  }
+
+  const enableTotp = async () => {
+    if (!canEnableTotp) return
+    setTotpLoading(true)
+    setTotpError('')
+    try {
+      await authApi.enableTotp(totpCode.trim())
+      await refreshUser()
+      resetTotpDialog()
+    } catch (err) {
+      setTotpError(getApiErrorMessage(err, t('settings.security.totpCodeInvalid')))
+    } finally {
+      setTotpLoading(false)
+    }
+  }
+
+  const disableTotp = async () => {
+    if (!canDisableTotp) return
+    setTotpLoading(true)
+    setTotpError('')
+    try {
+      await authApi.disableTotp(totpPassword, totpCode.trim())
+      await refreshUser()
+      resetTotpDialog()
+    } catch (err) {
+      setTotpError(getApiErrorMessage(err, t('settings.security.totpDisableFailed')))
+    } finally {
+      setTotpLoading(false)
+    }
+  }
+
+  const openTotpDialog = () => {
+    setTotpPassword('')
+    setTotpCode('')
+    setTotpSecret('')
+    setTotpProvisioningUri('')
+    setTotpSetupMethod('qr')
+    setTotpError('')
+    setTotpDialog(user?.totp_enabled ? 'disable' : 'setup-password')
+  }
+
   const handleUpdatePassword = async () => {
     if (!canUpdatePassword) return
     setPasswordLoading(true)
@@ -405,6 +491,27 @@ export default function SecurityPanel() {
             disabled={emailEditing && !canConfirmEmailReset}
           >
             {emailEditing ? t('settings.security.confirm') : t('settings.security.emailReset')}
+          </button>
+        </div>
+        {emailError && !emailDialog && <p className="forgot-modal__error">{emailError}</p>}
+      </div>
+
+      <div className="settings-panel__section">
+        <div className="settings-panel__label">{t('settings.security.totpTitle')}</div>
+        <div className="settings-panel__row">
+          <StatusPill
+            state={user?.totp_enabled ? 'green' : 'orange'}
+            label={user?.totp_enabled ? t('settings.security.totpEnabledStatus') : t('settings.security.totpDisabledStatus')}
+          />
+          <div className="settings-panel__input settings-panel__totp-summary">
+            {user?.totp_enabled ? t('settings.security.totpEnabledDesc') : t('settings.security.totpDisabledDesc')}
+          </div>
+          <button
+            className="settings-panel__btn settings-panel__btn--gray settings-panel__btn--totp-action"
+            type="button"
+            onClick={openTotpDialog}
+          >
+            {user?.totp_enabled ? t('settings.security.totpDisable') : t('settings.security.totpEnable')}
           </button>
         </div>
         {emailError && !emailDialog && <p className="forgot-modal__error">{emailError}</p>}
@@ -556,6 +663,140 @@ export default function SecurityPanel() {
           >
             {t('settings.security.confirm')}
           </button>
+        </div>
+      </AnimatedModal>
+
+      <AnimatedModal
+        isOpen={totpDialog !== null}
+        overlayClassName="forgot-modal__overlay"
+        dialogClassName="forgot-modal__dialog"
+        ariaLabel={t('settings.security.totpTitle')}
+        onClose={resetTotpDialog}
+      >
+        <div className="forgot-modal__header">
+          <h3 className="forgot-modal__title">
+            {totpDialog === 'disable' ? t('settings.security.totpDisableTitle') : t('settings.security.totpSetupTitle')}
+          </h3>
+          <button className="forgot-modal__close" onClick={resetTotpDialog} type="button" aria-label={t('settings.security.close')}>
+            <Icon name="actions.closeEmoji" />
+          </button>
+        </div>
+        <div className="forgot-modal__body">
+          {totpDialog === 'setup-password' && (
+            <>
+              <p className="forgot-modal__desc">{t('settings.security.totpPasswordDesc')}</p>
+              <input
+                className="settings-panel__input"
+                type="password"
+                autoComplete="current-password"
+                value={totpPassword}
+                onChange={(event) => { setTotpPassword(event.target.value); setTotpError('') }}
+                placeholder={t('settings.security.passwordCurrentPlaceholder')}
+              />
+              {totpError && <p className="forgot-modal__error">{totpError}</p>}
+              <button
+                className={`settings-panel__btn ${totpPassword.trim() ? 'settings-panel__btn--password-ready' : 'settings-panel__btn--gray'}`}
+                type="button"
+                onClick={beginTotpSetup}
+                disabled={!totpPassword.trim() || totpLoading}
+              >
+                {totpLoading ? '...' : t('settings.security.confirm')}
+              </button>
+            </>
+          )}
+          {totpDialog === 'setup-code' && (
+            <>
+              {totpSetupMethod === 'qr' ? (
+                <>
+                  <p className="forgot-modal__desc">{t('settings.security.totpQrSetupDesc')}</p>
+                  <div className="settings-panel__totp-qr">
+                    <QRCodeSVG
+                      value={totpProvisioningUri}
+                      size={196}
+                      level="M"
+                      marginSize={2}
+                      title={t('settings.security.totpQrCodeLabel')}
+                    />
+                  </div>
+                  <button
+                    className="settings-panel__totp-switch"
+                    type="button"
+                    onClick={() => setTotpSetupMethod('secret')}
+                  >
+                    {t('settings.security.totpUseSecret')}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="forgot-modal__desc">{t('settings.security.totpSetupDesc')}</p>
+                  <div className="settings-panel__totp-secret">{totpSecret}</div>
+                  <button
+                    className="settings-panel__btn settings-panel__btn--gray settings-panel__btn--totp-action"
+                    type="button"
+                    onClick={() => void navigator.clipboard?.writeText(totpSecret)}
+                  >
+                    {t('settings.security.totpCopySecret')}
+                  </button>
+                  <button
+                    className="settings-panel__totp-switch"
+                    type="button"
+                    onClick={() => setTotpSetupMethod('qr')}
+                  >
+                    {t('settings.security.totpUseQr')}
+                  </button>
+                </>
+              )}
+              <input
+                className="settings-panel__input"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={totpCode}
+                onChange={(event) => { setTotpCode(normalizeTotpCode(event.target.value)); setTotpError('') }}
+                placeholder={t('settings.security.totpCodePlaceholder')}
+              />
+              {totpError && <p className="forgot-modal__error">{totpError}</p>}
+              <button
+                className={`settings-panel__btn ${canEnableTotp ? 'settings-panel__btn--password-ready' : 'settings-panel__btn--gray'}`}
+                type="button"
+                onClick={enableTotp}
+                disabled={!canEnableTotp || totpLoading}
+              >
+                {totpLoading ? '...' : t('settings.security.totpVerifyEnable')}
+              </button>
+            </>
+          )}
+          {totpDialog === 'disable' && (
+            <>
+              <p className="forgot-modal__desc">{t('settings.security.totpDisableDesc')}</p>
+              <input
+                className="settings-panel__input"
+                type="password"
+                autoComplete="current-password"
+                value={totpPassword}
+                onChange={(event) => { setTotpPassword(event.target.value); setTotpError('') }}
+                placeholder={t('settings.security.passwordCurrentPlaceholder')}
+              />
+              <input
+                className="settings-panel__input"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={totpCode}
+                onChange={(event) => { setTotpCode(normalizeTotpCode(event.target.value)); setTotpError('') }}
+                placeholder={t('settings.security.totpCodePlaceholder')}
+              />
+              {totpError && <p className="forgot-modal__error">{totpError}</p>}
+              <button
+                className={`settings-panel__btn ${canDisableTotp ? 'settings-panel__btn--password-ready' : 'settings-panel__btn--gray'}`}
+                type="button"
+                onClick={disableTotp}
+                disabled={!canDisableTotp || totpLoading}
+              >
+                {totpLoading ? '...' : t('settings.security.totpDisable')}
+              </button>
+            </>
+          )}
         </div>
       </AnimatedModal>
 

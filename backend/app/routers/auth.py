@@ -2,7 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from app.schemas import (
     AuthLoginRequest,
+    AuthLoginResponse,
     AuthRegisterRequest,
+    AuthTotpVerifyRequest,
     AuthTokenResponse,
     EmailVerificationSendRequest,
     EmailVerificationSendResponse,
@@ -57,18 +59,38 @@ def register(
         _raise_http(exc)
 
 
-@router.post("/login", response_model=AuthTokenResponse)
+@router.post("/login", response_model=AuthLoginResponse)
 def login(
     payload: AuthLoginRequest,
     request: Request,
     response: Response,
     user_service: UserService = Depends(get_user_service),
-) -> AuthTokenResponse:
+) -> AuthLoginResponse:
     try:
         token_response = user_service.login(
             email=payload.email,
             password=payload.password,
             session_duration=payload.session_duration,
+            request=request,
+        )
+        if isinstance(token_response, AuthTokenResponse):
+            set_auth_cookies(response, token_response.access_token, token_response.expires_at)
+        return token_response
+    except UserServiceError as exc:
+        _raise_http(exc)
+
+
+@router.post("/login/totp", response_model=AuthTokenResponse)
+def verify_login_totp(
+    payload: AuthTotpVerifyRequest,
+    request: Request,
+    response: Response,
+    user_service: UserService = Depends(get_user_service),
+) -> AuthTokenResponse:
+    try:
+        token_response = user_service.complete_totp_login(
+            challenge_token=payload.challenge_token,
+            code=payload.code,
             request=request,
         )
         set_auth_cookies(response, token_response.access_token, token_response.expires_at)

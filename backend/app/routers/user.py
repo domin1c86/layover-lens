@@ -16,6 +16,10 @@ from app.schemas import (
     SessionDurationUpdateRequest,
     SessionDurationUpdateResponse,
     SuccessResponse,
+    TotpDisableRequest,
+    TotpEnableRequest,
+    TotpSetupRequest,
+    TotpSetupResponse,
     UserEmailUpdateRequest,
     UserEmailVerifyRequest,
     UserPasswordCheckRequest,
@@ -200,6 +204,62 @@ def update_password(
         )
         user_service.revoke_other_tokens(current_user.user.id, current_user.token_hash)
         return SuccessResponse(success=True)
+    except UserServiceError as exc:
+        _raise_http(exc)
+
+
+@router.post("/totp/setup", response_model=TotpSetupResponse, dependencies=[Depends(require_csrf)])
+def setup_totp(
+    payload: TotpSetupRequest,
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    user_service: UserService = Depends(get_user_service),
+) -> TotpSetupResponse:
+    try:
+        return user_service.begin_totp_setup(
+            current_user.user.id,
+            current_password=payload.current_password,
+            request=request,
+        )
+    except UserServiceError as exc:
+        _raise_http(exc)
+
+
+@router.post("/totp/enable", response_model=UserProfile, dependencies=[Depends(require_csrf)])
+def enable_totp(
+    payload: TotpEnableRequest,
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    user_service: UserService = Depends(get_user_service),
+) -> UserProfile:
+    try:
+        profile = user_service.enable_totp(
+            current_user.user.id,
+            code=payload.code,
+            request=request,
+        )
+        user_service.revoke_other_tokens(current_user.user.id, current_user.token_hash)
+        return profile
+    except UserServiceError as exc:
+        _raise_http(exc)
+
+
+@router.post("/totp/disable", response_model=UserProfile, dependencies=[Depends(require_csrf)])
+def disable_totp(
+    payload: TotpDisableRequest,
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    user_service: UserService = Depends(get_user_service),
+) -> UserProfile:
+    try:
+        profile = user_service.disable_totp(
+            current_user.user.id,
+            current_password=payload.current_password,
+            code=payload.code,
+            request=request,
+        )
+        user_service.revoke_other_tokens(current_user.user.id, current_user.token_hash)
+        return profile
     except UserServiceError as exc:
         _raise_http(exc)
 

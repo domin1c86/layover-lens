@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255) NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     email_verified BOOLEAN NOT NULL DEFAULT TRUE,
+    totp_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     nickname VARCHAR(80),
     avatar_url VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -157,6 +158,25 @@ CREATE TABLE IF NOT EXISTS security_audit_logs (
     INDEX idx_audit_user_time (user_id, created_at),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='security audit logs';
+
+CREATE TABLE IF NOT EXISTS user_totp_settings (
+    user_id VARCHAR(40) PRIMARY KEY,
+    secret_encrypted TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='user totp settings';
+
+CREATE TABLE IF NOT EXISTS totp_login_challenges (
+    challenge_hash CHAR(64) PRIMARY KEY,
+    user_id VARCHAR(40) NOT NULL,
+    session_duration VARCHAR(20) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    consumed_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='totp login challenges';
 
 -- ============================================
 -- 插入城市数据（40个主要城市）

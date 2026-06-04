@@ -7,6 +7,7 @@ import type {
   AiSessionResponse,
   AiConfirmRequest,
   AuthLoginRequest,
+  AuthLoginResponse,
   AuthRegisterRequest,
   AuthTokenResponse,
   DeviceInfo,
@@ -19,6 +20,7 @@ import type {
   ForgotPasswordVerifyCodeResponse,
   SessionDuration,
   SessionDurationUpdateResponse,
+  TotpSetupResponse,
   UserProfile,
 } from '../types';
 import { clearAuthSession } from './authStorage';
@@ -84,8 +86,16 @@ export const authApi = {
     return response.data;
   },
 
-  login: async (request: AuthLoginRequest): Promise<AuthTokenResponse> => {
-    const response = await apiClient.post<AuthTokenResponse>('/auth/login', request);
+  login: async (request: AuthLoginRequest): Promise<AuthLoginResponse> => {
+    const response = await apiClient.post<AuthLoginResponse>('/auth/login', request);
+    return response.data;
+  },
+
+  verifyTotpLogin: async (challengeToken: string, code: string): Promise<AuthTokenResponse> => {
+    const response = await apiClient.post<AuthTokenResponse>('/auth/login/totp', {
+      challenge_token: challengeToken,
+      code,
+    });
     return response.data;
   },
 
@@ -200,6 +210,26 @@ export const authApi = {
       current_password: currentPassword,
       new_password: newPassword,
     });
+  },
+
+  setupTotp: async (currentPassword: string): Promise<TotpSetupResponse> => {
+    const response = await apiClient.post<TotpSetupResponse>('/user/totp/setup', {
+      current_password: currentPassword,
+    });
+    return response.data;
+  },
+
+  enableTotp: async (code: string): Promise<UserProfile> => {
+    const response = await apiClient.post<UserProfile>('/user/totp/enable', { code });
+    return response.data;
+  },
+
+  disableTotp: async (currentPassword: string, code: string): Promise<UserProfile> => {
+    const response = await apiClient.post<UserProfile>('/user/totp/disable', {
+      current_password: currentPassword,
+      code,
+    });
+    return response.data;
   },
 
   updateSessionDuration: async (sessionDuration: SessionDuration): Promise<SessionDurationUpdateResponse> => {

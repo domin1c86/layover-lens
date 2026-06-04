@@ -17,7 +17,8 @@
   box-shadow: rgba(0, 0, 0, 0.02) 0 0 0 1px, rgba(0, 0, 0, 0.04) 0 2px 6px, rgba(0, 0, 0, 0.1) 0 4px 8px;
   width: 100%;
   max-width: 800px;
-  max-height: 80vh;
+  height: min(600px, calc(100vh - 48px));
+  max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -30,6 +31,7 @@
   justify-content: space-between;
   padding: 20px 24px;
   border-bottom: 1px solid #dddddd;
+  flex-shrink: 0;
 }
 
 .settings-modal__title {
@@ -65,17 +67,26 @@
   display: flex;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 /* Desktop Nav */
+.settings-nav {
+  display: flex;
+  align-self: stretch;
+  flex-shrink: 0;
+  border-right: 1px solid #dddddd;
+}
+
 .settings-nav__desktop {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 8px;
   width: 200px;
+  height: 100%;
   padding: 24px;
-  border-right: 1px solid #dddddd;
-  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .settings-nav__item {
@@ -146,7 +157,31 @@
 .settings-modal__content {
   flex: 1;
   padding: 32px;
-  overflow-y: auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-color: #b8b8b8 #f2f2f2;
+  scrollbar-width: thin;
+}
+
+.settings-modal__content::-webkit-scrollbar {
+  width: 10px;
+}
+
+.settings-modal__content::-webkit-scrollbar-track {
+  background: #f2f2f2;
+}
+
+.settings-modal__content::-webkit-scrollbar-thumb {
+  border: 2px solid #f2f2f2;
+  border-radius: 8px;
+  background: #b8b8b8;
+}
+
+.settings-modal__content::-webkit-scrollbar-thumb:hover {
+  background: #8f8f8f;
 }
 
 /* Panel styles */
@@ -361,6 +396,74 @@
   background: #e8a55a;
   border-color: #e8a55a;
   color: #ffffff;
+}
+
+.settings-panel__btn--totp-action:hover {
+  background: #e8a55a;
+  border-color: #e8a55a;
+  color: #ffffff;
+}
+
+.settings-panel__totp-summary {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+}
+
+.settings-panel__totp-qr {
+  width: min(100%, 228px);
+  aspect-ratio: 1;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.settings-panel__totp-qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.settings-panel__totp-secret {
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  font-family: monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.settings-panel__totp-switch {
+  align-self: center;
+  border: none;
+  padding: 2px 4px;
+  background: transparent;
+  color: #6a6a6a;
+  font-family: var(--font-family);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.settings-panel__totp-switch:hover {
+  color: #e8a55a;
+}
+
+.settings-panel__btn:disabled,
+.settings-panel__btn:disabled:hover {
+  background: #f7f7f7;
+  border-color: #c8c8c8;
+  color: #999999;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .settings-panel__options {
@@ -904,13 +1007,19 @@
     display: none;
   }
 
+  .settings-nav {
+    display: block;
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #dddddd;
+  }
+
   .settings-nav__mobile {
     display: flex;
     gap: 4px;
     padding: 12px 16px 8px;
     height: 56px;
     align-items: center;
-    border-bottom: 1px solid #dddddd;
     overflow-x: auto;
     scrollbar-width: none;
     flex-shrink: 0;
@@ -984,6 +1093,15 @@
 
   .settings-modal__content {
     padding: 24px;
+    scrollbar-gutter: auto;
+  }
+
+  .settings-panel__device-header {
+    flex-direction: column;
+  }
+
+  .settings-panel__device-meta-grid {
+    grid-template-columns: 1fr;
   }
 
   .settings-panel__device-header {

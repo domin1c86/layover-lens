@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   authApi: {
     register: vi.fn(),
     login: vi.fn(),
+    verifyTotpLogin: vi.fn(),
     logout: vi.fn(),
     deleteAccount: vi.fn(),
     getProfile: vi.fn(),
@@ -24,6 +25,7 @@ const profile: UserProfile = {
   username: 'tester',
   email: 'tester@example.com',
   email_verified: true,
+  totp_enabled: false,
   nickname: null,
   avatar_url: null,
   created_at: '2026-01-01T00:00:00',
@@ -31,6 +33,7 @@ const profile: UserProfile = {
 
 function tokenResponse(duration: SessionDuration = 'day'): AuthTokenResponse {
   return {
+    requires_totp: false,
     user: profile,
     access_token: `token_${duration}`,
     token_type: 'bearer',
@@ -66,7 +69,10 @@ describe('AuthContext', () => {
       password: 'secret123',
       session_duration: 'day',
     })
-    expect(success!.sessionDuration).toBe('day')
+    expect('sessionDuration' in success!).toBe(true)
+    if ('sessionDuration' in success!) {
+      expect(success.sessionDuration).toBe('day')
+    }
     expect(result.current.user?.email).toBe('tester@example.com')
     expect(getStoredAuthSession()).toMatchObject({
       user: profile,
@@ -92,6 +98,30 @@ describe('AuthContext', () => {
       session_duration: 'month',
     })
     expect(getStoredAuthSession()?.sessionDuration).toBe('month')
+  })
+
+  it('completes a TOTP login challenge before storing auth state', async () => {
+    mocks.authApi.login.mockResolvedValue({
+      requires_totp: true,
+      challenge_token: 'challenge_token',
+      expires_in_seconds: 300,
+    })
+    mocks.authApi.verifyTotpLogin.mockResolvedValue(tokenResponse('day'))
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+
+    let challenge: Awaited<ReturnType<typeof result.current.login>> | undefined
+    await act(async () => {
+      challenge = await result.current.login('tester@example.com', 'secret123')
+    })
+    expect('requiresTotp' in challenge!).toBe(true)
+    expect(result.current.user).toBeNull()
+
+    await act(async () => {
+      await result.current.verifyTotpLogin('challenge_token', '123456')
+    })
+
+    expect(mocks.authApi.verifyTotpLogin).toHaveBeenCalledWith('challenge_token', '123456')
+    expect(result.current.user?.email).toBe('tester@example.com')
   })
 
   it('clears local state on logout', async () => {

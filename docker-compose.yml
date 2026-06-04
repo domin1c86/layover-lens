@@ -28,6 +28,8 @@ services:
       - CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000","http://localhost:3200","http://127.0.0.1:3200"]
       - SESSION_COOKIE_SECRET=${SESSION_COOKIE_SECRET:-dev-session-cookie-secret}
       - CSRF_SECRET=${CSRF_SECRET:-dev-csrf-secret}
+      - TOTP_ENCRYPTION_SECRET=${TOTP_ENCRYPTION_SECRET:-dev-totp-encryption-secret}
+      - TOTP_ISSUER_NAME=${TOTP_ISSUER_NAME:-Layover Lens}
       - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-false}
       - SESSION_COOKIE_SAMESITE=${SESSION_COOKIE_SAMESITE:-lax}
       - DISABLE_BEARER_AUTH_IN_PRODUCTION=${DISABLE_BEARER_AUTH_IN_PRODUCTION:-true}

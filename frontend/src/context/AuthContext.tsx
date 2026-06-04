@@ -18,12 +18,19 @@ interface AuthSuccess {
   sessionDuration: SessionDuration
 }
 
+export interface TotpRequired {
+  requiresTotp: true
+  challengeToken: string
+  expiresInSeconds: number
+}
+
 interface AuthContextType {
   user: UserProfile | null
   isLoggedIn: boolean
   loading: boolean
   sessionDuration: SessionDuration
-  login: (email: string, password: string) => Promise<AuthSuccess>
+  login: (email: string, password: string) => Promise<AuthSuccess | TotpRequired>
+  verifyTotpLogin: (challengeToken: string, code: string) => Promise<AuthSuccess>
   register: (email: string, username: string, password: string, emailVerificationToken: string) => Promise<AuthSuccess>
   logout: () => Promise<void>
   deleteAccount: () => Promise<void>
@@ -99,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = useCallback(
-    async (email: string, password: string): Promise<AuthSuccess> => {
+    async (email: string, password: string): Promise<AuthSuccess | TotpRequired> => {
       setLoading(true)
       try {
         const response = await authApi.login({
@@ -107,6 +114,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           password,
           session_duration: sessionDuration,
         })
+        if (response.requires_totp) {
+          return {
+            requiresTotp: true,
+            challengeToken: response.challenge_token,
+            expiresInSeconds: response.expires_in_seconds,
+          }
+        }
         return persistAuth(toAuthSession(response))
       } finally {
         setLoading(false)
@@ -114,6 +128,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     [persistAuth, sessionDuration]
   )
+
+  const verifyTotpLogin = useCallback(async (challengeToken: string, code: string): Promise<AuthSuccess> => {
+    setLoading(true)
+    try {
+      const response = await authApi.verifyTotpLogin(challengeToken, code)
+      return persistAuth(toAuthSession(response))
+    } finally {
+      setLoading(false)
+    }
+  }, [persistAuth])
 
   const register = useCallback(
     async (email: string, username: string, password: string, emailVerificationToken: string): Promise<AuthSuccess> => {
@@ -182,13 +206,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       sessionDuration,
       login,
+      verifyTotpLogin,
       register,
       logout,
       deleteAccount,
       refreshUser,
       setSessionDuration,
     }),
-    [user, loading, sessionDuration, login, register, logout, deleteAccount, refreshUser, setSessionDuration]
+    [user, loading, sessionDuration, login, verifyTotpLogin, register, logout, deleteAccount, refreshUser, setSessionDuration]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
