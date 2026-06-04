@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     email_verified BOOLEAN NOT NULL DEFAULT TRUE,
     totp_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    totp_replaces_email_codes BOOLEAN NOT NULL DEFAULT FALSE,
     nickname VARCHAR(80),
     avatar_url VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

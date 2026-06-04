@@ -17,6 +17,7 @@ from app.schemas import (
     SessionDurationUpdateResponse,
     SuccessResponse,
     TotpDisableRequest,
+    TotpEmailCodeReplacementUpdateRequest,
     TotpEnableRequest,
     TotpSetupRequest,
     TotpSetupResponse,
@@ -260,6 +261,23 @@ def disable_totp(
         )
         user_service.revoke_other_tokens(current_user.user.id, current_user.token_hash)
         return profile
+    except UserServiceError as exc:
+        _raise_http(exc)
+
+
+@router.put("/totp/email-code-replacement", response_model=UserProfile, dependencies=[Depends(require_csrf)])
+def update_totp_email_code_replacement(
+    payload: TotpEmailCodeReplacementUpdateRequest,
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    user_service: UserService = Depends(get_user_service),
+) -> UserProfile:
+    try:
+        return user_service.update_totp_email_code_replacement(
+            current_user.user.id,
+            enabled=payload.enabled,
+            request=request,
+        )
     except UserServiceError as exc:
         _raise_http(exc)
 

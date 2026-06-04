@@ -120,6 +120,7 @@ export interface UserProfile {
   email: string;
   email_verified: boolean;
   totp_enabled: boolean;
+  totp_replaces_email_codes: boolean;
   nickname?: string | null;
   avatar_url?: string | null;
   created_at: string;
@@ -186,10 +187,12 @@ export interface DeviceListResponse {
 
 export interface ForgotPasswordCheckEmailResponse {
   registered: boolean;
+  verification_method: 'email' | 'totp';
 }
 
 export interface ForgotPasswordSendCodeResponse {
   expires_in_seconds: number;
+  verification_method: 'email' | 'totp';
 }
 
 export interface ForgotPasswordVerifyCodeResponse {

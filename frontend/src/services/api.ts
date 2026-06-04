@@ -232,6 +232,11 @@ export const authApi = {
     return response.data;
   },
 
+  updateTotpEmailCodeReplacement: async (enabled: boolean): Promise<UserProfile> => {
+    const response = await apiClient.put<UserProfile>('/user/totp/email-code-replacement', { enabled });
+    return response.data;
+  },
+
   updateSessionDuration: async (sessionDuration: SessionDuration): Promise<SessionDurationUpdateResponse> => {
     const response = await apiClient.put<SessionDurationUpdateResponse>('/user/session-duration', {
       session_duration: sessionDuration,

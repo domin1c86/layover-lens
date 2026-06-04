@@ -439,6 +439,12 @@ def test_totp_setup_login_challenge_and_disable() -> None:
     email = _unique_email("totp")
     _, headers = _register(client, email)
 
+    assert client.put(
+        "/api/v1/user/totp/email-code-replacement",
+        headers=headers,
+        json={"enabled": True},
+    ).status_code == 409
+
     wrong_setup = client.post(
         "/api/v1/user/totp/setup",
         headers=headers,
@@ -469,6 +475,37 @@ def test_totp_setup_login_challenge_and_disable() -> None:
     )
     assert enabled.status_code == 200
     assert enabled.json()["totp_enabled"] is True
+    assert enabled.json()["totp_replaces_email_codes"] is False
+
+    replacement = client.put(
+        "/api/v1/user/totp/email-code-replacement",
+        headers=headers,
+        json={"enabled": True},
+    )
+    assert replacement.status_code == 200
+    assert replacement.json()["totp_replaces_email_codes"] is True
+
+    reset_method = client.post(
+        "/api/v1/auth/forgot-password/check-email",
+        json={"email": email},
+    )
+    assert reset_method.json() == {"registered": True, "verification_method": "totp"}
+    send_reset = client.post(
+        "/api/v1/auth/forgot-password/send-code",
+        json={"email": email},
+    )
+    assert send_reset.json() == {"expires_in_seconds": 0, "verification_method": "totp"}
+    assert client.post(
+        "/api/v1/auth/forgot-password/verify-code",
+        json={"email": email, "code": "000000"},
+    ).json() == {"verified": False, "reset_token": None}
+    totp_reset = client.post(
+        "/api/v1/auth/forgot-password/verify-code",
+        json={"email": email, "code": pyotp.TOTP(secret).now()},
+    )
+    assert totp_reset.status_code == 200
+    assert totp_reset.json()["verified"] is True
+    assert totp_reset.json()["reset_token"]
 
     client.cookies.clear()
     login = client.post(
@@ -504,6 +541,15 @@ def test_totp_setup_login_challenge_and_disable() -> None:
     )
     assert disabled.status_code == 200
     assert disabled.json()["totp_enabled"] is False
+    assert disabled.json()["totp_replaces_email_codes"] is False
+    assert client.post(
+        "/api/v1/auth/forgot-password/reset",
+        json={"reset_token": totp_reset.json()["reset_token"], "new_password": "should-not-apply"},
+    ).status_code == 400
+    assert client.post(
+        "/api/v1/auth/forgot-password/check-email",
+        json={"email": email},
+    ).json() == {"registered": True, "verification_method": "email"}
 
 
 def test_password_reset_preferences_and_import_platforms() -> None:
@@ -514,7 +560,7 @@ def test_password_reset_preferences_and_import_platforms() -> None:
     assert client.post(
         "/api/v1/auth/forgot-password/check-email",
         json={"email": email},
-    ).json() == {"registered": True}
+    ).json() == {"registered": True, "verification_method": "email"}
     send_response = client.post(
         "/api/v1/auth/forgot-password/send-code",
         json={"email": email},

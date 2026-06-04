@@ -205,6 +205,7 @@ class UserProfile(BaseModel):
     nickname: Optional[str] = None
     avatar_url: Optional[str] = None
     totp_enabled: bool = False
+    totp_replaces_email_codes: bool = False
     created_at: datetime
 
 
@@ -267,6 +268,7 @@ class ForgotPasswordCheckEmailRequest(BaseModel):
 
 class ForgotPasswordCheckEmailResponse(BaseModel):
     registered: bool
+    verification_method: Literal["email", "totp"] = "email"
 
 
 class ForgotPasswordSendCodeRequest(BaseModel):
@@ -275,6 +277,7 @@ class ForgotPasswordSendCodeRequest(BaseModel):
 
 class ForgotPasswordSendCodeResponse(BaseModel):
     expires_in_seconds: int
+    verification_method: Literal["email", "totp"] = "email"
 
 
 class ForgotPasswordVerifyCodeRequest(BaseModel):
@@ -366,6 +369,10 @@ class TotpEnableRequest(BaseModel):
 class TotpDisableRequest(BaseModel):
     current_password: str = Field(min_length=1, max_length=255)
     code: str = Field(min_length=6, max_length=12)
+
+
+class TotpEmailCodeReplacementUpdateRequest(BaseModel):
+    enabled: bool
 
 
 class UserPreferences(BaseModel):

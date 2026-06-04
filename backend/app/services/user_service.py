@@ -57,6 +57,7 @@ AUDIT_EVENTS = {
     "totp_enabled",
     "totp_disabled",
     "totp_login_failed",
+    "totp_email_code_replacement_updated",
 }
 SESSION_DURATION_DELTAS: dict[SessionDuration, Optional[timedelta]] = {
     "day": timedelta(days=1),
@@ -323,6 +324,7 @@ class UserService:
                 password_hash TEXT NOT NULL,
                 email_verified BOOLEAN NOT NULL DEFAULT TRUE,
                 totp_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                totp_replaces_email_codes BOOLEAN NOT NULL DEFAULT FALSE,
                 nickname VARCHAR(80),
                 avatar_url VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -469,6 +471,12 @@ class UserService:
                 cursor.execute(statement)
             self._ensure_mysql_column(cursor, "users", "email_verified", "BOOLEAN NOT NULL DEFAULT TRUE AFTER password_hash")
             self._ensure_mysql_column(cursor, "users", "totp_enabled", "BOOLEAN NOT NULL DEFAULT FALSE AFTER email_verified")
+            self._ensure_mysql_column(
+                cursor,
+                "users",
+                "totp_replaces_email_codes",
+                "BOOLEAN NOT NULL DEFAULT FALSE AFTER totp_enabled",
+            )
             self._ensure_mysql_column(cursor, "auth_tokens", "expires_at", "TIMESTAMP NULL AFTER created_at")
             connection.commit()
             return True
@@ -612,6 +620,7 @@ class UserService:
                                 email=email,
                                 email_verified=True,
                                 totp_enabled=False,
+                                totp_replaces_email_codes=False,
                                 nickname=initial_nickname,
                                 avatar_url=None,
                                 created_at=created_at,
@@ -659,6 +668,7 @@ class UserService:
                         email=email,
                         email_verified=True,
                         totp_enabled=False,
+                        totp_replaces_email_codes=False,
                         nickname=initial_nickname,
                         avatar_url=None,
                         created_at=created_at,
@@ -908,7 +918,8 @@ class UserService:
                 cursor = connection.cursor(dictionary=True)
                 cursor.execute(
                     """
-                    SELECT u.id, u.username, u.email, u.email_verified, u.totp_enabled, u.nickname, u.avatar_url, u.created_at
+                    SELECT u.id, u.username, u.email, u.email_verified, u.totp_enabled,
+                           u.totp_replaces_email_codes, u.nickname, u.avatar_url, u.created_at
                     FROM auth_tokens t
                     JOIN users u ON u.id = t.user_id
                     WHERE t.token_hash = %s
@@ -1247,13 +1258,22 @@ class UserService:
             with self._connect() as connection:
                 cursor = connection.cursor()
                 cursor.execute("DELETE FROM user_totp_settings WHERE user_id = %s", (user_id,))
-                cursor.execute("UPDATE users SET totp_enabled = FALSE WHERE id = %s", (user_id,))
+                cursor.execute(
+                    "UPDATE users SET totp_enabled = FALSE, totp_replaces_email_codes = FALSE WHERE id = %s",
+                    (user_id,),
+                )
+                cursor.execute("DELETE FROM password_reset_tokens WHERE email = %s", (profile.email,))
                 connection.commit()
         else:
             with self._lock:
                 self._totp_settings.pop(user_id, None)
                 profile = self._users[user_id]["profile"]
-                self._users[user_id]["profile"] = profile.model_copy(update={"totp_enabled": False})
+                self._users[user_id]["profile"] = profile.model_copy(
+                    update={"totp_enabled": False, "totp_replaces_email_codes": False}
+                )
+                reset_record = self._reset_by_email.pop(profile.email, None)
+                if reset_record and reset_record.get("reset_token"):
+                    self._reset_tokens.pop(reset_record["reset_token"], None)
         self._record_audit_event(
             event_type="totp_disabled",
             user_id=user_id,
@@ -1268,6 +1288,42 @@ class UserService:
             return False
         secret = _decrypt_totp_secret(setting["secret_encrypted"])
         return bool(pyotp.TOTP(secret).verify(code.strip(), valid_window=1))
+
+    def update_totp_email_code_replacement(
+        self,
+        user_id: str,
+        *,
+        enabled: bool,
+        request: Optional[Request] = None,
+    ) -> UserProfile:
+        profile = self.get_profile(user_id)
+        if enabled and not profile.totp_enabled:
+            raise UserServiceError("TOTP must be enabled first.", status.HTTP_409_CONFLICT)
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    "UPDATE users SET totp_replaces_email_codes = %s WHERE id = %s",
+                    (enabled, user_id),
+                )
+                cursor.execute("DELETE FROM password_reset_tokens WHERE email = %s", (profile.email,))
+                connection.commit()
+            updated = self.get_profile(user_id)
+        else:
+            with self._lock:
+                updated = profile.model_copy(update={"totp_replaces_email_codes": enabled})
+                self._users[user_id]["profile"] = updated
+                reset_record = self._reset_by_email.pop(profile.email, None)
+                if reset_record and reset_record.get("reset_token"):
+                    self._reset_tokens.pop(reset_record["reset_token"], None)
+        self._record_audit_event(
+            event_type="totp_email_code_replacement_updated",
+            user_id=user_id,
+            request=request,
+            success=True,
+            metadata={"enabled": enabled},
+        )
+        return updated
 
     def _get_totp_setting(self, user_id: str) -> Optional[dict]:
         if self._mysql_available:
@@ -1291,13 +1347,26 @@ class UserService:
             with self._connect() as connection:
                 cursor = connection.cursor()
                 cursor.execute("UPDATE user_totp_settings SET enabled = %s WHERE user_id = %s", (enabled, user_id))
-                cursor.execute("UPDATE users SET totp_enabled = %s WHERE id = %s", (enabled, user_id))
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET totp_enabled = %s,
+                        totp_replaces_email_codes = CASE WHEN %s THEN totp_replaces_email_codes ELSE FALSE END
+                    WHERE id = %s
+                    """,
+                    (enabled, enabled, user_id),
+                )
                 connection.commit()
             return
         with self._lock:
             self._totp_settings[user_id]["enabled"] = enabled
             profile = self._users[user_id]["profile"]
-            self._users[user_id]["profile"] = profile.model_copy(update={"totp_enabled": enabled})
+            self._users[user_id]["profile"] = profile.model_copy(
+                update={
+                    "totp_enabled": enabled,
+                    "totp_replaces_email_codes": profile.totp_replaces_email_codes if enabled else False,
+                }
+            )
 
     def verify_current_email(self, user_id: str, *, verification_token: str) -> UserProfile:
         profile = self.get_profile(user_id)
@@ -1440,10 +1509,20 @@ class UserService:
         profile, _ = self._get_user_with_password(_normalize_email(email))
         return profile is not None
 
-    def send_reset_code(self, email: str) -> int:
+    def get_password_reset_method(self, email: str) -> tuple[bool, str]:
+        profile, _ = self._get_user_with_password(_normalize_email(email))
+        if not profile:
+            return False, "email"
+        use_totp = profile.totp_enabled and profile.totp_replaces_email_codes
+        return True, "totp" if use_totp else "email"
+
+    def send_reset_code(self, email: str) -> tuple[int, str]:
         email = _normalize_email(email)
-        if not self.check_email(email):
+        registered, verification_method = self.get_password_reset_method(email)
+        if not registered:
             raise UserServiceError("Email is not registered.", status.HTTP_404_NOT_FOUND)
+        if verification_method == "totp":
+            return 0, "totp"
         expires_at = _utcnow() + timedelta(seconds=RESET_CODE_TTL_SECONDS)
         if self._mysql_available:
             with self._connect() as connection:
@@ -1461,12 +1540,43 @@ class UserService:
         else:
             with self._lock:
                 self._reset_by_email[email] = {"code": RESET_CODE, "expires_at": expires_at}
-        return RESET_CODE_TTL_SECONDS
+        return RESET_CODE_TTL_SECONDS, "email"
 
     def verify_reset_code(self, *, email: str, code: str) -> tuple[bool, Optional[str]]:
         email = _normalize_email(email)
+        profile, _ = self._get_user_with_password(email)
+        if not profile:
+            return False, None
+        self._check_rate_limit("password_reset_verify:email", email, limit=8)
         reset_token = secrets.token_urlsafe(32)
         now = _utcnow()
+        if profile.totp_enabled and profile.totp_replaces_email_codes:
+            if not self.verify_totp_code(profile.id, code):
+                return False, None
+            expires_at = now + timedelta(seconds=TOTP_CHALLENGE_TTL_SECONDS)
+            if self._mysql_available:
+                with self._connect() as connection:
+                    cursor = connection.cursor()
+                    cursor.execute(
+                        """
+                        INSERT INTO password_reset_tokens (email, code, expires_at, reset_token, verified_at)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE code = VALUES(code), expires_at = VALUES(expires_at),
+                            reset_token = VALUES(reset_token), verified_at = VALUES(verified_at)
+                        """,
+                        (email, "totp", expires_at, reset_token, now),
+                    )
+                    connection.commit()
+            else:
+                with self._lock:
+                    self._reset_by_email[email] = {
+                        "code": "totp",
+                        "expires_at": expires_at,
+                        "reset_token": reset_token,
+                        "verified_at": now,
+                    }
+                    self._reset_tokens[reset_token] = {"email": email, "expires_at": expires_at}
+            return True, reset_token
         if self._mysql_available:
             with self._connect() as connection:
                 cursor = connection.cursor(dictionary=True)
@@ -1965,7 +2075,7 @@ class UserService:
             with self._connect() as connection:
                 cursor = connection.cursor(dictionary=True)
                 cursor.execute(
-                    "SELECT id, username, email, password_hash, email_verified, totp_enabled, nickname, avatar_url, created_at FROM users WHERE email = %s",
+                    "SELECT id, username, email, password_hash, email_verified, totp_enabled, totp_replaces_email_codes, nickname, avatar_url, created_at FROM users WHERE email = %s",
                     (email,),
                 )
                 row = cursor.fetchone()
@@ -1984,7 +2094,7 @@ class UserService:
             with self._connect() as connection:
                 cursor = connection.cursor(dictionary=True)
                 cursor.execute(
-                    "SELECT id, username, email, email_verified, totp_enabled, nickname, avatar_url, created_at FROM users WHERE id = %s",
+                    "SELECT id, username, email, email_verified, totp_enabled, totp_replaces_email_codes, nickname, avatar_url, created_at FROM users WHERE id = %s",
                     (user_id,),
                 )
                 row = cursor.fetchone()
@@ -2009,6 +2119,7 @@ class UserService:
             email=row["email"],
             email_verified=bool(row.get("email_verified", True)),
             totp_enabled=bool(row.get("totp_enabled", False)),
+            totp_replaces_email_codes=bool(row.get("totp_replaces_email_codes", False)),
             nickname=row.get("nickname"),
             avatar_url=row.get("avatar_url"),
             created_at=row["created_at"],

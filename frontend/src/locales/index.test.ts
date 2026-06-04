@@ -71,6 +71,10 @@ describe('dictionary', () => {
       'totpQrCodeLabel',
       'totpUseSecret',
       'totpUseQr',
+      'totpReplacementTitle',
+      'totpReplacementDesc',
+      'totpReplacementOwnershipNote',
+      'totpReplacementFailed',
     ]
 
     for (const key of keys) {

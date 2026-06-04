@@ -143,7 +143,11 @@ def check_email(
     payload: ForgotPasswordCheckEmailRequest,
     user_service: UserService = Depends(get_user_service),
 ) -> ForgotPasswordCheckEmailResponse:
-    return ForgotPasswordCheckEmailResponse(registered=user_service.check_email(payload.email))
+    registered, verification_method = user_service.get_password_reset_method(payload.email)
+    return ForgotPasswordCheckEmailResponse(
+        registered=registered,
+        verification_method=verification_method,
+    )
 
 
 @router.post("/forgot-password/send-code", response_model=ForgotPasswordSendCodeResponse)
@@ -152,8 +156,11 @@ def send_code(
     user_service: UserService = Depends(get_user_service),
 ) -> ForgotPasswordSendCodeResponse:
     try:
-        expires_in_seconds = user_service.send_reset_code(payload.email)
-        return ForgotPasswordSendCodeResponse(expires_in_seconds=expires_in_seconds)
+        expires_in_seconds, verification_method = user_service.send_reset_code(payload.email)
+        return ForgotPasswordSendCodeResponse(
+            expires_in_seconds=expires_in_seconds,
+            verification_method=verification_method,
+        )
     except UserServiceError as exc:
         _raise_http(exc)
 
