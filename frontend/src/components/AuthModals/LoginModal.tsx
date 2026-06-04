@@ -59,13 +59,15 @@ function successText(duration: SessionDuration, lang: 'zh' | 'en'): string {
 
 export default function LoginModal({ isOpen, onClose, onSwitchToRegister, onOpenForgotPassword }: LoginModalProps) {
   const { lang, t } = useLocale()
-  const { login } = useAuth()
+  const { login, verifyTotpLogin } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [totpChallengeToken, setTotpChallengeToken] = useState('')
+  const [totpCode, setTotpCode] = useState('')
 
   useEffect(() => {
     if (!isOpen) return
@@ -75,6 +77,8 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister, onOpen
     setError('')
     setSuccessMessage('')
     setLoading(false)
+    setTotpChallengeToken('')
+    setTotpCode('')
   }, [isOpen])
 
   useEffect(() => {
@@ -118,9 +122,31 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister, onOpen
     setLoading(true)
     try {
       const result = await login(trimmedEmail, password)
+      if ('requiresTotp' in result) {
+        setTotpChallengeToken(result.challengeToken)
+        setTotpCode('')
+        return
+      }
       setSuccessMessage(successText(result.sessionDuration, lang))
     } catch (err) {
       setError(getApiErrorMessage(err, lang === 'en' ? 'Login failed. Please try again.' : '登录失败，请稍后重试。'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleTotpSubmit = async () => {
+    if (!totpChallengeToken || totpCode.trim().length < 6) {
+      setError(t('auth.totpCodeInvalid'))
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      const result = await verifyTotpLogin(totpChallengeToken, totpCode.trim())
+      setSuccessMessage(successText(result.sessionDuration, lang))
+    } catch (err) {
+      setError(getApiErrorMessage(err, t('auth.totpCodeInvalid')))
     } finally {
       setLoading(false)
     }
@@ -167,6 +193,32 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister, onOpen
             <div className="auth-modal__body">
               {successMessage ? (
                 <p className="auth-modal__success">{successMessage}</p>
+              ) : totpChallengeToken ? (
+                <>
+                  <p className="auth-modal__success">{t('auth.totpLoginDesc')}</p>
+                  <div className="auth-modal__field">
+                    <label className="auth-modal__label">{t('auth.totpCode')}</label>
+                    <input
+                      className="settings-panel__input"
+                      type="text"
+                      inputMode="numeric"
+                      value={totpCode}
+                      onChange={(e) => { setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 8)); setError('') }}
+                      placeholder={t('auth.totpCodePlaceholder')}
+                      autoComplete="one-time-code"
+                    />
+                  </div>
+                  {error && <p className="auth-modal__error">{error}</p>}
+                  <button
+                    className="settings-panel__btn settings-panel__btn--primary"
+                    onClick={handleTotpSubmit}
+                    type="button"
+                    disabled={loading || totpCode.trim().length < 6}
+                    style={{ width: '100%', marginTop: '4px' }}
+                  >
+                    {loading ? '...' : t('auth.totpVerify')}
+                  </button>
+                </>
               ) : (
                 <>
                   <div className="auth-modal__field">

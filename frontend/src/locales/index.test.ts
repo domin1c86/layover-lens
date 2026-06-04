@@ -67,6 +67,10 @@ describe('dictionary', () => {
       'changeEmailCodeTitle',
       'oldEmailMismatch',
       'newEmailInvalid',
+      'totpQrSetupDesc',
+      'totpQrCodeLabel',
+      'totpUseSecret',
+      'totpUseQr',
     ]
 
     for (const key of keys) {

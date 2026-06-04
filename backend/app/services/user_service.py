@@ -13,6 +13,8 @@ from typing import Optional
 from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
+import pyotp
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -21,6 +23,8 @@ from app.schemas import (
     AISearchResponse,
     AISearchSessionStatus,
     AISessionSummary,
+    AuthLoginResponse,
+    AuthTotpChallengeResponse,
     AuthTokenResponse,
     BookingCreateResponse,
     DeviceInfo,
@@ -28,6 +32,7 @@ from app.schemas import (
     FavoriteCreateResponse,
     RoutePlan,
     SessionDuration,
+    TotpSetupResponse,
     UserPreferences,
     UserPreferencesUpdate,
     UserProfile,
@@ -36,6 +41,7 @@ from app.schemas import (
 
 RESET_CODE = "000000"
 RESET_CODE_TTL_SECONDS = 60
+TOTP_CHALLENGE_TTL_SECONDS = 300
 PASSWORD_ITERATIONS = 120_000
 APP_TIMEZONE = timezone(timedelta(hours=8))
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
@@ -48,6 +54,9 @@ AUDIT_EVENTS = {
     "password_changed",
     "account_deleted",
     "device_revoked",
+    "totp_enabled",
+    "totp_disabled",
+    "totp_login_failed",
 }
 SESSION_DURATION_DELTAS: dict[SessionDuration, Optional[timedelta]] = {
     "day": timedelta(days=1),
@@ -147,6 +156,22 @@ def _verify_csrf_token(*, session_token: str, csrf_token: str) -> bool:
         return False
     expected = _csrf_signature(_token_hash(session_token), nonce)
     return secrets.compare_digest(signature, expected)
+
+
+def _totp_fernet() -> Fernet:
+    key = hashlib.sha256(settings.totp_encryption_secret.encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(key))
+
+
+def _encrypt_totp_secret(secret: str) -> str:
+    return _totp_fernet().encrypt(secret.encode("ascii")).decode("ascii")
+
+
+def _decrypt_totp_secret(secret_encrypted: str) -> str:
+    try:
+        return _totp_fernet().decrypt(secret_encrypted.encode("ascii")).decode("ascii")
+    except (InvalidToken, ValueError) as exc:
+        raise UserServiceError("Unable to read TOTP configuration.", status.HTTP_500_INTERNAL_SERVER_ERROR) from exc
 
 
 def set_auth_cookies(response: Response, token: str, expires_at: Optional[datetime]) -> str:
@@ -254,6 +279,8 @@ class UserService:
         self._bookings: dict[str, dict] = {}
         self._rate_limits: dict[str, list[datetime]] = {}
         self._audit_logs: list[dict] = []
+        self._totp_settings: dict[str, dict] = {}
+        self._totp_challenges: dict[str, dict] = {}
 
         if _is_production() and not self._mysql_available:
             raise RuntimeError("MySQL is required for account storage in production.")
@@ -262,6 +289,8 @@ class UserService:
                 raise RuntimeError("SESSION_COOKIE_SECRET must be configured in production.")
             if not settings.csrf_secret or settings.csrf_secret == "dev-csrf-secret":
                 raise RuntimeError("CSRF_SECRET must be configured in production.")
+            if not settings.totp_encryption_secret or settings.totp_encryption_secret == "dev-totp-encryption-secret":
+                raise RuntimeError("TOTP_ENCRYPTION_SECRET must be configured in production.")
 
     def _connect(self):
         import mysql.connector
@@ -293,6 +322,7 @@ class UserService:
                 email VARCHAR(255) NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
                 email_verified BOOLEAN NOT NULL DEFAULT TRUE,
+                totp_enabled BOOLEAN NOT NULL DEFAULT FALSE,
                 nickname VARCHAR(80),
                 avatar_url VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -411,12 +441,34 @@ class UserService:
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """,
+            """
+            CREATE TABLE IF NOT EXISTS user_totp_settings (
+                user_id VARCHAR(40) PRIMARY KEY,
+                secret_encrypted TEXT NOT NULL,
+                enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS totp_login_challenges (
+                challenge_hash CHAR(64) PRIMARY KEY,
+                user_id VARCHAR(40) NOT NULL,
+                session_duration VARCHAR(20) NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                consumed_at TIMESTAMP NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
         ]
         try:
             cursor = connection.cursor()
             for statement in statements:
                 cursor.execute(statement)
             self._ensure_mysql_column(cursor, "users", "email_verified", "BOOLEAN NOT NULL DEFAULT TRUE AFTER password_hash")
+            self._ensure_mysql_column(cursor, "users", "totp_enabled", "BOOLEAN NOT NULL DEFAULT FALSE AFTER email_verified")
             self._ensure_mysql_column(cursor, "auth_tokens", "expires_at", "TIMESTAMP NULL AFTER created_at")
             connection.commit()
             return True
@@ -559,6 +611,7 @@ class UserService:
                                 username=user_id,
                                 email=email,
                                 email_verified=True,
+                                totp_enabled=False,
                                 nickname=initial_nickname,
                                 avatar_url=None,
                                 created_at=created_at,
@@ -605,6 +658,7 @@ class UserService:
                         username=user_id,
                         email=email,
                         email_verified=True,
+                        totp_enabled=False,
                         nickname=initial_nickname,
                         avatar_url=None,
                         created_at=created_at,
@@ -640,7 +694,7 @@ class UserService:
         password: str,
         session_duration: SessionDuration = "day",
         request: Optional[Request] = None,
-    ) -> AuthTokenResponse:
+    ) -> AuthLoginResponse:
         email = _normalize_email(email)
         self._check_rate_limit("login:ip", _client_ip(request), limit=60)
         self._check_rate_limit("login:email", email, limit=6)
@@ -653,6 +707,8 @@ class UserService:
                 success=False,
             )
             raise UserServiceError("Invalid email or password.", status.HTTP_401_UNAUTHORIZED)
+        if profile.totp_enabled:
+            return self._create_totp_login_challenge(profile.id, session_duration)
         self._record_audit_event(
             event_type="login_success",
             user_id=profile.id,
@@ -660,6 +716,122 @@ class UserService:
             success=True,
         )
         return self._issue_token(profile, session_duration=session_duration, request=request)
+
+    def _create_totp_login_challenge(
+        self,
+        user_id: str,
+        session_duration: SessionDuration,
+    ) -> AuthTotpChallengeResponse:
+        challenge_token = secrets.token_urlsafe(32)
+        challenge_hash = _token_hash(challenge_token)
+        expires_at = _utcnow() + timedelta(seconds=TOTP_CHALLENGE_TTL_SECONDS)
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO totp_login_challenges (
+                        challenge_hash, user_id, session_duration, expires_at
+                    )
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (challenge_hash, user_id, session_duration, expires_at),
+                )
+                connection.commit()
+        else:
+            with self._lock:
+                self._totp_challenges[challenge_hash] = {
+                    "user_id": user_id,
+                    "session_duration": session_duration,
+                    "expires_at": expires_at,
+                    "consumed_at": None,
+                }
+        return AuthTotpChallengeResponse(
+            challenge_token=challenge_token,
+            expires_in_seconds=TOTP_CHALLENGE_TTL_SECONDS,
+        )
+
+    def complete_totp_login(
+        self,
+        *,
+        challenge_token: str,
+        code: str,
+        request: Optional[Request] = None,
+    ) -> AuthTokenResponse:
+        challenge_hash = _token_hash(challenge_token)
+        self._check_rate_limit("totp_login:challenge", challenge_hash, limit=8)
+        now = _utcnow()
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(
+                    """
+                    SELECT user_id, session_duration, expires_at, consumed_at
+                    FROM totp_login_challenges
+                    WHERE challenge_hash = %s
+                    """,
+                    (challenge_hash,),
+                )
+                challenge = cursor.fetchone()
+        else:
+            challenge = self._totp_challenges.get(challenge_hash)
+        if (
+            not challenge
+            or challenge.get("consumed_at") is not None
+            or challenge["expires_at"] <= now
+        ):
+            raise UserServiceError("Invalid or expired TOTP challenge.", status.HTTP_401_UNAUTHORIZED)
+        user_id = challenge["user_id"]
+        if not self.verify_totp_code(user_id, code):
+            self._record_audit_event(
+                event_type="totp_login_failed",
+                user_id=user_id,
+                request=request,
+                success=False,
+            )
+            raise UserServiceError("Invalid authentication code.", status.HTTP_401_UNAUTHORIZED)
+
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    """
+                    UPDATE totp_login_challenges
+                    SET consumed_at = %s
+                    WHERE challenge_hash = %s
+                      AND consumed_at IS NULL
+                      AND expires_at > %s
+                    """,
+                    (now, challenge_hash, now),
+                )
+                if cursor.rowcount != 1:
+                    connection.rollback()
+                    raise UserServiceError("Invalid or expired TOTP challenge.", status.HTTP_401_UNAUTHORIZED)
+                connection.commit()
+        else:
+            with self._lock:
+                current_challenge = self._totp_challenges.get(challenge_hash)
+                if (
+                    not current_challenge
+                    or current_challenge.get("consumed_at") is not None
+                    or current_challenge["expires_at"] <= now
+                ):
+                    raise UserServiceError("Invalid or expired TOTP challenge.", status.HTTP_401_UNAUTHORIZED)
+                current_challenge["consumed_at"] = now
+
+        profile = self.get_profile(user_id)
+        self._record_audit_event(
+            event_type="login_success",
+            user_id=user_id,
+            request=request,
+            success=True,
+            metadata={"factor": "totp"},
+        )
+        return self._issue_token(
+            profile,
+            session_duration=challenge["session_duration"],
+            request=request,
+        )
 
     def logout(self, token_hash: str) -> None:
         if self._mysql_available:
@@ -736,7 +908,7 @@ class UserService:
                 cursor = connection.cursor(dictionary=True)
                 cursor.execute(
                     """
-                    SELECT u.id, u.username, u.email, u.email_verified, u.nickname, u.avatar_url, u.created_at
+                    SELECT u.id, u.username, u.email, u.email_verified, u.totp_enabled, u.nickname, u.avatar_url, u.created_at
                     FROM auth_tokens t
                     JOIN users u ON u.id = t.user_id
                     WHERE t.token_hash = %s
@@ -818,6 +990,7 @@ class UserService:
             self._favorites.pop(user_id, None)
             self._devices.pop(user_id, None)
             self._avatars.pop(user_id, None)
+            self._totp_settings.pop(user_id, None)
             self._ai_sessions.pop(user_id, None)
             self._bookings = {
                 booking_id: booking
@@ -828,6 +1001,11 @@ class UserService:
                 token_hash: token
                 for token_hash, token in self._tokens.items()
                 if token.get("user_id") != user_id
+            }
+            self._totp_challenges = {
+                challenge_hash: challenge
+                for challenge_hash, challenge in self._totp_challenges.items()
+                if challenge.get("user_id") != user_id
             }
         self._record_audit_event(
             event_type="account_deleted",
@@ -996,6 +1174,130 @@ class UserService:
         profile = self.get_profile(user_id)
         _, current_hash = self._get_user_with_password(profile.email)
         return _verify_password(current_password, current_hash or "")
+
+    def begin_totp_setup(self, user_id: str, *, current_password: str, request: Optional[Request] = None) -> TotpSetupResponse:
+        self._check_rate_limit("totp_setup:user", user_id, limit=8)
+        profile = self.get_profile(user_id)
+        if profile.totp_enabled:
+            raise UserServiceError("TOTP is already enabled.", status.HTTP_409_CONFLICT)
+        _, current_hash = self._get_user_with_password(profile.email)
+        if not _verify_password(current_password, current_hash or ""):
+            raise UserServiceError("Current password is incorrect.", status.HTTP_400_BAD_REQUEST)
+
+        secret = pyotp.random_base32()
+        secret_encrypted = _encrypt_totp_secret(secret)
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO user_totp_settings (user_id, secret_encrypted, enabled)
+                    VALUES (%s, %s, FALSE)
+                    ON DUPLICATE KEY UPDATE secret_encrypted = VALUES(secret_encrypted), enabled = FALSE
+                    """,
+                    (user_id, secret_encrypted),
+                )
+                connection.commit()
+        else:
+            with self._lock:
+                self._totp_settings[user_id] = {
+                    "secret_encrypted": secret_encrypted,
+                    "enabled": False,
+                }
+
+        uri = pyotp.TOTP(secret).provisioning_uri(
+            name=profile.email,
+            issuer_name=settings.totp_issuer_name,
+        )
+        return TotpSetupResponse(secret=secret, provisioning_uri=uri)
+
+    def enable_totp(self, user_id: str, *, code: str, request: Optional[Request] = None) -> UserProfile:
+        self._check_rate_limit("totp_enable:user", user_id, limit=8)
+        setting = self._get_totp_setting(user_id)
+        if not setting or setting["enabled"]:
+            raise UserServiceError("No pending TOTP setup.", status.HTTP_400_BAD_REQUEST)
+        secret = _decrypt_totp_secret(setting["secret_encrypted"])
+        if not pyotp.TOTP(secret).verify(code.strip(), valid_window=1):
+            raise UserServiceError("Invalid authentication code.", status.HTTP_400_BAD_REQUEST)
+        self._set_totp_enabled(user_id, True)
+        self._record_audit_event(
+            event_type="totp_enabled",
+            user_id=user_id,
+            request=request,
+            success=True,
+        )
+        return self.get_profile(user_id)
+
+    def disable_totp(
+        self,
+        user_id: str,
+        *,
+        current_password: str,
+        code: str,
+        request: Optional[Request] = None,
+    ) -> UserProfile:
+        self._check_rate_limit("totp_disable:user", user_id, limit=8)
+        profile = self.get_profile(user_id)
+        _, current_hash = self._get_user_with_password(profile.email)
+        if not _verify_password(current_password, current_hash or ""):
+            raise UserServiceError("Current password is incorrect.", status.HTTP_400_BAD_REQUEST)
+        if not self.verify_totp_code(user_id, code):
+            raise UserServiceError("Invalid authentication code.", status.HTTP_400_BAD_REQUEST)
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute("DELETE FROM user_totp_settings WHERE user_id = %s", (user_id,))
+                cursor.execute("UPDATE users SET totp_enabled = FALSE WHERE id = %s", (user_id,))
+                connection.commit()
+        else:
+            with self._lock:
+                self._totp_settings.pop(user_id, None)
+                profile = self._users[user_id]["profile"]
+                self._users[user_id]["profile"] = profile.model_copy(update={"totp_enabled": False})
+        self._record_audit_event(
+            event_type="totp_disabled",
+            user_id=user_id,
+            request=request,
+            success=True,
+        )
+        return self.get_profile(user_id)
+
+    def verify_totp_code(self, user_id: str, code: str) -> bool:
+        setting = self._get_totp_setting(user_id)
+        if not setting or not setting["enabled"]:
+            return False
+        secret = _decrypt_totp_secret(setting["secret_encrypted"])
+        return bool(pyotp.TOTP(secret).verify(code.strip(), valid_window=1))
+
+    def _get_totp_setting(self, user_id: str) -> Optional[dict]:
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(
+                    "SELECT secret_encrypted, enabled FROM user_totp_settings WHERE user_id = %s",
+                    (user_id,),
+                )
+                row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "secret_encrypted": row["secret_encrypted"],
+                "enabled": bool(row["enabled"]),
+            }
+        return self._totp_settings.get(user_id)
+
+    def _set_totp_enabled(self, user_id: str, enabled: bool) -> None:
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute("UPDATE user_totp_settings SET enabled = %s WHERE user_id = %s", (enabled, user_id))
+                cursor.execute("UPDATE users SET totp_enabled = %s WHERE id = %s", (enabled, user_id))
+                connection.commit()
+            return
+        with self._lock:
+            self._totp_settings[user_id]["enabled"] = enabled
+            profile = self._users[user_id]["profile"]
+            self._users[user_id]["profile"] = profile.model_copy(update={"totp_enabled": enabled})
 
     def verify_current_email(self, user_id: str, *, verification_token: str) -> UserProfile:
         profile = self.get_profile(user_id)
@@ -1663,7 +1965,7 @@ class UserService:
             with self._connect() as connection:
                 cursor = connection.cursor(dictionary=True)
                 cursor.execute(
-                    "SELECT id, username, email, password_hash, email_verified, nickname, avatar_url, created_at FROM users WHERE email = %s",
+                    "SELECT id, username, email, password_hash, email_verified, totp_enabled, nickname, avatar_url, created_at FROM users WHERE email = %s",
                     (email,),
                 )
                 row = cursor.fetchone()
@@ -1682,7 +1984,7 @@ class UserService:
             with self._connect() as connection:
                 cursor = connection.cursor(dictionary=True)
                 cursor.execute(
-                    "SELECT id, username, email, email_verified, nickname, avatar_url, created_at FROM users WHERE id = %s",
+                    "SELECT id, username, email, email_verified, totp_enabled, nickname, avatar_url, created_at FROM users WHERE id = %s",
                     (user_id,),
                 )
                 row = cursor.fetchone()
@@ -1706,6 +2008,7 @@ class UserService:
             username=row["username"],
             email=row["email"],
             email_verified=bool(row.get("email_verified", True)),
+            totp_enabled=bool(row.get("totp_enabled", False)),
             nickname=row.get("nickname"),
             avatar_url=row.get("avatar_url"),
             created_at=row["created_at"],

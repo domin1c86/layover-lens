@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useLocale } from '../../context/LocaleContext'
 import { useAuth } from '../../context/AuthContext'
@@ -45,6 +45,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { t } = useLocale()
   const { isLoggedIn } = useAuth()
   const [activeTab, setActiveTab] = useState<SettingsTab>('account')
+  const contentRef = useRef<HTMLDivElement | null>(null)
 
   const disabledTabs = useMemo(
     () => (isLoggedIn ? undefined : LOGIN_REQUIRED_TABS),
@@ -74,6 +75,10 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       document.body.style.overflow = ''
     }
   }, [isOpen, handleKeyDown])
+
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0 })
+  }, [activeTab])
 
   const ActivePanel = PANELS[activeTab]
 
@@ -111,7 +116,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             </div>
             <div className="settings-modal__body">
               <NavMenu activeTab={activeTab} onChange={setActiveTab} disabledTabs={disabledTabs} />
-              <div className="settings-modal__content">
+              <div className="settings-modal__content" ref={contentRef}>
                 <ActivePanel />
               </div>
             </div>

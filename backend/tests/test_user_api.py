@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import re
 from uuid import uuid4
 
+import pyotp
 from fastapi.testclient import TestClient
 
 from app.config import settings
@@ -431,6 +432,78 @@ def test_password_change_revokes_other_devices() -> None:
     assert changed.status_code == 200
     assert client.get("/api/v1/user/profile", headers=first_headers).status_code == 401
     assert client.get("/api/v1/user/profile", headers=second_headers).status_code == 200
+
+
+def test_totp_setup_login_challenge_and_disable() -> None:
+    client = _fresh_client()
+    email = _unique_email("totp")
+    _, headers = _register(client, email)
+
+    wrong_setup = client.post(
+        "/api/v1/user/totp/setup",
+        headers=headers,
+        json={"current_password": "wrong"},
+    )
+    assert wrong_setup.status_code == 400
+
+    setup = client.post(
+        "/api/v1/user/totp/setup",
+        headers=headers,
+        json={"current_password": "secret123"},
+    )
+    assert setup.status_code == 200
+    secret = setup.json()["secret"]
+    assert setup.json()["provisioning_uri"].startswith("otpauth://totp/")
+
+    assert client.post(
+        "/api/v1/user/totp/enable",
+        headers=headers,
+        json={"code": "000000"},
+    ).status_code == 400
+
+    code = pyotp.TOTP(secret).now()
+    enabled = client.post(
+        "/api/v1/user/totp/enable",
+        headers=headers,
+        json={"code": code},
+    )
+    assert enabled.status_code == 200
+    assert enabled.json()["totp_enabled"] is True
+
+    client.cookies.clear()
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": "secret123"},
+    )
+    assert login.status_code == 200
+    assert login.json()["requires_totp"] is True
+    assert "access_token" not in login.json()
+
+    challenge_token = login.json()["challenge_token"]
+    assert client.post(
+        "/api/v1/auth/login/totp",
+        json={"challenge_token": challenge_token, "code": "000000"},
+    ).status_code == 401
+
+    verified = client.post(
+        "/api/v1/auth/login/totp",
+        json={"challenge_token": challenge_token, "code": pyotp.TOTP(secret).now()},
+    )
+    assert verified.status_code == 200
+    assert verified.json()["requires_totp"] is False
+    assert client.get("/api/v1/user/profile").status_code == 200
+    assert client.post(
+        "/api/v1/auth/login/totp",
+        json={"challenge_token": challenge_token, "code": pyotp.TOTP(secret).now()},
+    ).status_code == 401
+
+    disabled = client.post(
+        "/api/v1/user/totp/disable",
+        headers=headers,
+        json={"current_password": "secret123", "code": pyotp.TOTP(secret).now()},
+    )
+    assert disabled.status_code == 200
+    assert disabled.json()["totp_enabled"] is False
 
 
 def test_password_reset_preferences_and_import_platforms() -> None:

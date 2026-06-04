@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import Enum
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -204,6 +204,7 @@ class UserProfile(BaseModel):
     email_verified: bool = True
     nickname: Optional[str] = None
     avatar_url: Optional[str] = None
+    totp_enabled: bool = False
     created_at: datetime
 
 
@@ -225,11 +226,26 @@ class AuthRegisterRequest(BaseModel):
 
 
 class AuthTokenResponse(BaseModel):
+    requires_totp: Literal[False] = False
     user: UserProfile
     access_token: str
     token_type: Literal["bearer"] = "bearer"
     expires_at: Optional[datetime] = None
     session_duration: SessionDuration = "day"
+
+
+class AuthTotpChallengeResponse(BaseModel):
+    requires_totp: Literal[True] = True
+    challenge_token: str
+    expires_in_seconds: int
+
+
+AuthLoginResponse = Union[AuthTokenResponse, AuthTotpChallengeResponse]
+
+
+class AuthTotpVerifyRequest(BaseModel):
+    challenge_token: str = Field(min_length=16, max_length=255)
+    code: str = Field(min_length=6, max_length=12)
 
 
 class SessionDurationUpdateRequest(BaseModel):
@@ -332,6 +348,24 @@ class UserPasswordCheckResponse(BaseModel):
 class UserPasswordUpdateRequest(BaseModel):
     current_password: str = Field(min_length=1, max_length=255)
     new_password: str = Field(min_length=6, max_length=255)
+
+
+class TotpSetupRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=255)
+
+
+class TotpSetupResponse(BaseModel):
+    secret: str
+    provisioning_uri: str
+
+
+class TotpEnableRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=12)
+
+
+class TotpDisableRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=255)
+    code: str = Field(min_length=6, max_length=12)
 
 
 class UserPreferences(BaseModel):
