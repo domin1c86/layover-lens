@@ -153,25 +153,36 @@ class ParsedSearchRequest(BaseModel):
 class AIChatMessage(BaseModel):
     role: str = Field(pattern="^(user|assistant)$")
     content: str = Field(min_length=1, max_length=4000)
+    search_response: Optional[SearchResponse] = None
 
 
 class AISearchSessionStatus(str, Enum):
     COLLECTING = "collecting"
+    COLLECTING_REQUIRED = "collecting_required"
+    COLLECTING_OPTIONAL = "collecting_optional"
     AWAITING_CONFIRMATION = "awaiting_confirmation"
+    EXECUTING = "executing"
+    RESULTS_AVAILABLE = "results_available"
+    FAILED = "failed"
     COMPLETED = "completed"
 
 
 class AISearchSessionCreateRequest(BaseModel):
     message: str = Field(min_length=1, max_length=1000)
+    language: Optional[str] = Field(default="zh", pattern="^(zh|en)$")
+    request_id: Optional[str] = Field(default=None, min_length=8, max_length=100)
 
 
 class AISearchSessionTurnRequest(BaseModel):
     message: str = Field(min_length=1, max_length=1000)
     language: Optional[str] = Field(default="zh", pattern="^(zh|en)$")
+    request_id: Optional[str] = Field(default=None, min_length=8, max_length=100)
 
 
 class AISearchSessionConfirmRequest(BaseModel):
     confirmed: bool = True
+    language: Optional[str] = Field(default="zh", pattern="^(zh|en)$")
+    request_id: Optional[str] = Field(default=None, min_length=8, max_length=100)
 
 
 class AISearchResponse(BaseModel):
@@ -186,6 +197,9 @@ class AISearchResponse(BaseModel):
     ready_for_confirmation: bool
     search_executed: bool
     search_response: Optional[SearchResponse] = None
+    next_question_field: Optional[str] = None
+    answered_fields: list[str] = Field(default_factory=list)
+    skipped_fields: list[str] = Field(default_factory=list)
 
 
 class SummarizeRequest(BaseModel):

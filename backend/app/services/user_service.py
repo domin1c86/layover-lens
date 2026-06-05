@@ -412,9 +412,40 @@ class UserService:
                 status VARCHAR(40) NOT NULL,
                 last_message_preview VARCHAR(255) NOT NULL,
                 response_json MEDIUMTEXT NOT NULL,
+                active_run_id VARCHAR(100),
+                active_run_started_at TIMESTAMP NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS ai_agent_usage (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id VARCHAR(40) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_ai_usage_user_time (user_id, created_at),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS ai_agent_requests (
+                request_id VARCHAR(100) PRIMARY KEY,
+                user_id VARCHAR(40) NOT NULL,
+                session_id VARCHAR(80) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_ai_request_session (session_id),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (session_id) REFERENCES ai_search_sessions(session_id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS ai_checkpoint_deletions (
+                session_id VARCHAR(80) PRIMARY KEY,
+                user_id VARCHAR(40) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP NULL,
+                last_error VARCHAR(255)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """,
             """
@@ -478,6 +509,14 @@ class UserService:
                 "BOOLEAN NOT NULL DEFAULT FALSE AFTER totp_enabled",
             )
             self._ensure_mysql_column(cursor, "auth_tokens", "expires_at", "TIMESTAMP NULL AFTER created_at")
+            self._ensure_mysql_column(cursor, "ai_search_sessions", "active_run_id", "VARCHAR(100) NULL AFTER response_json")
+            self._ensure_mysql_column(
+                cursor,
+                "ai_search_sessions",
+                "active_run_started_at",
+                "TIMESTAMP NULL AFTER active_run_id",
+            )
+            cursor.execute("UPDATE ai_search_sessions SET response_json = '{}' WHERE response_json <> '{}'")
             connection.commit()
             return True
         except Exception:
@@ -1870,7 +1909,6 @@ class UserService:
         title = (title or response.summary or "AI Search").strip()[:120] or "AI Search"
         last_preview = response.conversation[-1].content[:120] if response.conversation else ""
         now = _utcnow()
-        payload = response.model_dump(mode="json")
         if self._mysql_available:
             with self._connect() as connection:
                 cursor = connection.cursor()
@@ -1894,7 +1932,7 @@ class UserService:
                         title,
                         response.status.value,
                         last_preview,
-                        _json_dump(payload),
+                        "{}",
                         now,
                         now,
                     ),
@@ -1915,6 +1953,184 @@ class UserService:
                 "created_at": created_at,
                 "updated_at": now,
             }
+
+    def assert_ai_session_owner(self, user_id: str, session_id: str) -> None:
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    "SELECT 1 FROM ai_search_sessions WHERE session_id = %s AND user_id = %s",
+                    (session_id, user_id),
+                )
+                if cursor.fetchone() is None:
+                    raise UserServiceError("AI session not found.", status.HTTP_404_NOT_FOUND)
+            return
+        if session_id not in self._ai_sessions.get(user_id, {}):
+            raise UserServiceError("AI session not found.", status.HTTP_404_NOT_FOUND)
+
+    def check_ai_agent_quota(self, user_id: str) -> None:
+        now = _utcnow()
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    "SELECT COUNT(*) FROM ai_agent_usage WHERE user_id = %s AND created_at >= %s",
+                    (user_id, now - timedelta(minutes=1)),
+                )
+                if int(cursor.fetchone()[0]) >= settings.ai_agent_minute_turn_limit:
+                    raise UserServiceError("AI request limit reached. Please wait before trying again.", status.HTTP_429_TOO_MANY_REQUESTS)
+                cursor.execute(
+                    "SELECT COUNT(*) FROM ai_agent_usage WHERE user_id = %s AND created_at >= %s",
+                    (user_id, now - timedelta(days=1)),
+                )
+                if int(cursor.fetchone()[0]) >= settings.ai_agent_daily_turn_limit:
+                    raise UserServiceError("Daily AI request limit reached.", status.HTTP_429_TOO_MANY_REQUESTS)
+                cursor.execute("INSERT INTO ai_agent_usage (user_id) VALUES (%s)", (user_id,))
+                connection.commit()
+            return
+        self._check_rate_limit(
+            "ai_agent_minute:user",
+            user_id,
+            limit=settings.ai_agent_minute_turn_limit,
+            window_seconds=60,
+        )
+
+    def check_ai_session_capacity(self, user_id: str) -> None:
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute("SELECT COUNT(*) FROM ai_search_sessions WHERE user_id = %s", (user_id,))
+                if int(cursor.fetchone()[0]) >= settings.ai_agent_max_sessions:
+                    raise UserServiceError("AI session limit reached.", status.HTTP_409_CONFLICT)
+            return
+        if len(self._ai_sessions.get(user_id, {})) >= settings.ai_agent_max_sessions:
+            raise UserServiceError("AI session limit reached.", status.HTTP_409_CONFLICT)
+
+    def reserve_ai_request(self, user_id: str, session_id: str, request_id: str) -> bool:
+        if self._mysql_available:
+            try:
+                with self._connect() as connection:
+                    cursor = connection.cursor()
+                    cursor.execute(
+                        "INSERT INTO ai_agent_requests (request_id, user_id, session_id) VALUES (%s, %s, %s)",
+                        (request_id, user_id, session_id),
+                    )
+                    connection.commit()
+                return True
+            except Exception:
+                return False
+        key = f"ai_request:{request_id}"
+        with self._lock:
+            if key in self._rate_limits:
+                return False
+            self._rate_limits[key] = [_utcnow()]
+        return True
+
+    def acquire_ai_session_run(self, user_id: str, session_id: str, run_id: str) -> None:
+        self.assert_ai_session_owner(user_id, session_id)
+        if not self._mysql_available:
+            return
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                UPDATE ai_search_sessions
+                SET active_run_id = %s, active_run_started_at = %s
+                WHERE session_id = %s AND user_id = %s
+                  AND (active_run_id IS NULL OR active_run_started_at < %s)
+                """,
+                (run_id, _utcnow(), session_id, user_id, _utcnow() - timedelta(minutes=2)),
+            )
+            if cursor.rowcount == 0:
+                raise UserServiceError("This AI session already has a request in progress.", status.HTTP_409_CONFLICT)
+            connection.commit()
+
+    def release_ai_session_run(self, user_id: str, session_id: str, run_id: str) -> None:
+        if not self._mysql_available:
+            return
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                UPDATE ai_search_sessions
+                SET active_run_id = NULL, active_run_started_at = NULL
+                WHERE session_id = %s AND user_id = %s AND active_run_id = %s
+                """,
+                (session_id, user_id, run_id),
+            )
+            connection.commit()
+
+    def queue_ai_checkpoint_deletion(self, user_id: str, session_id: str, error: str = "") -> None:
+        if not self._mysql_available:
+            return
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                INSERT INTO ai_checkpoint_deletions (session_id, user_id, last_error)
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE last_error = VALUES(last_error), completed_at = NULL
+                """,
+                (session_id, user_id, error[:255]),
+            )
+            connection.commit()
+
+    def list_user_ai_session_ids(self, user_id: str) -> list[str]:
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute("SELECT session_id FROM ai_search_sessions WHERE user_id = %s", (user_id,))
+                return [str(row[0]) for row in cursor.fetchall()]
+        return list(self._ai_sessions.get(user_id, {}).keys())
+
+    def list_expired_ai_session_ids(self, user_id: str) -> list[str]:
+        if not self._mysql_available:
+            return []
+        with self._connect() as connection:
+            cursor = connection.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT sessions.session_id, sessions.updated_at, preferences.chat_retention_days
+                FROM ai_search_sessions AS sessions
+                JOIN user_preferences AS preferences ON preferences.user_id = sessions.user_id
+                WHERE sessions.user_id = %s AND preferences.chat_retention_days >= 0
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+        now = _utcnow()
+        return [
+            str(row["session_id"])
+            for row in rows
+            if row["updated_at"] <= now - timedelta(days=int(row["chat_retention_days"]))
+        ]
+
+    def list_pending_ai_checkpoint_deletions(self, user_id: str) -> list[str]:
+        if not self._mysql_available:
+            return []
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                SELECT session_id FROM ai_checkpoint_deletions
+                WHERE user_id = %s AND completed_at IS NULL
+                ORDER BY created_at
+                LIMIT 20
+                """,
+                (user_id,),
+            )
+            return [str(row[0]) for row in cursor.fetchall()]
+
+    def complete_ai_checkpoint_deletion(self, session_id: str) -> None:
+        if not self._mysql_available:
+            return
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                "UPDATE ai_checkpoint_deletions SET completed_at = %s, last_error = NULL WHERE session_id = %s",
+                (_utcnow(), session_id),
+            )
+            connection.commit()
 
     def list_ai_sessions(self, user_id: str) -> list[AISessionSummary]:
         if self._mysql_available:

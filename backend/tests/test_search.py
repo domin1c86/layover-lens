@@ -1,14 +1,37 @@
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from app.data_source import reset_data_source_cache
 from app.main import app
+from app.agents.search_agent import reset_search_agent_service_cache
 from app.services import reset_search_service_cache
 
 
 def _fresh_client() -> TestClient:
     reset_search_service_cache()
+    reset_search_agent_service_cache()
     reset_data_source_cache()
     return TestClient(app)
+
+
+def _ai_headers(client: TestClient) -> dict[str, str]:
+    email = f"ai-{uuid4().hex[:10]}@example.com"
+    client.post("/api/v1/auth/email-verification/send", json={"email": email, "purpose": "register"})
+    verification = client.post(
+        "/api/v1/auth/email-verification/verify",
+        json={"email": email, "purpose": "register", "code": "000000"},
+    ).json()
+    payload = client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "ai-tester",
+            "email": email,
+            "password": "secret123",
+            "email_verification_token": verification["verification_token"],
+        },
+    ).json()
+    return {"Authorization": f"Bearer {payload['access_token']}"}
 
 
 def test_health_check() -> None:
@@ -235,7 +258,7 @@ def _mock_deepseek_multi_turn(monkeypatch) -> None:
         )()
 
     monkeypatch.setattr(
-        "app.services.ai_agent.DeepSeekChatClient.respond",
+        "app.agents.ai_agent.DeepSeekChatClient.respond",
         fake_respond,
     )
 
@@ -243,14 +266,16 @@ def _mock_deepseek_multi_turn(monkeypatch) -> None:
 def test_ai_search_collects_fields_across_turns_and_executes_on_confirm(monkeypatch) -> None:
     _mock_deepseek_multi_turn(monkeypatch)
     client = _fresh_client()
+    headers = _ai_headers(client)
     create_response = client.post(
         "/api/v1/search/ai/sessions",
+        headers=headers,
         json={"message": "我想去成都，越便宜越好"},
     )
 
     assert create_response.status_code == 200
     create_payload = create_response.json()
-    assert create_payload["status"] == "collecting"
+    assert create_payload["status"] == "collecting_required"
     assert create_payload["search_executed"] is False
     assert "from_city" in create_payload["missing_fields"]
     assert "travel_date" in create_payload["missing_fields"]
@@ -261,6 +286,7 @@ def test_ai_search_collects_fields_across_turns_and_executes_on_confirm(monkeypa
     session_id = create_payload["session_id"]
     message_response = client.post(
         f"/api/v1/search/ai/sessions/{session_id}/messages",
+        headers=headers,
         json={"message": "我从北京出发，2026-04-22走，只坐飞机，预算1300元以内"},
     )
 
@@ -277,12 +303,13 @@ def test_ai_search_collects_fields_across_turns_and_executes_on_confirm(monkeypa
 
     confirm_response = client.post(
         f"/api/v1/search/ai/sessions/{session_id}/confirm",
+        headers=headers,
         json={"confirmed": True},
     )
 
     assert confirm_response.status_code == 200
     confirm_payload = confirm_response.json()
-    assert confirm_payload["status"] == "completed"
+    assert confirm_payload["status"] == "results_available"
     assert confirm_payload["search_executed"] is True
     route = confirm_payload["search_response"]["routes"][0]
     assert route["total_price"] <= 1300
@@ -292,23 +319,27 @@ def test_ai_search_collects_fields_across_turns_and_executes_on_confirm(monkeypa
 def test_ai_search_can_continue_after_user_rejects_confirmation(monkeypatch) -> None:
     _mock_deepseek_multi_turn(monkeypatch)
     client = _fresh_client()
+    headers = _ai_headers(client)
     create_response = client.post(
         "/api/v1/search/ai/sessions",
+        headers=headers,
         json={"message": "我想去成都，越便宜越好"},
     )
     session_id = create_response.json()["session_id"]
 
     client.post(
         f"/api/v1/search/ai/sessions/{session_id}/messages",
+        headers=headers,
         json={"message": "我从北京出发，2026-04-22走，只坐飞机，预算1300元以内"},
     )
     reject_response = client.post(
         f"/api/v1/search/ai/sessions/{session_id}/confirm",
+        headers=headers,
         json={"confirmed": False},
     )
 
     assert reject_response.status_code == 200
     reject_payload = reject_response.json()
-    assert reject_payload["status"] == "collecting"
+    assert reject_payload["status"] == "awaiting_confirmation"
     assert reject_payload["search_executed"] is False
     assert "继续调整条件" in reject_payload["assistant_message"]

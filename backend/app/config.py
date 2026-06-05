@@ -62,10 +62,26 @@ class Settings(BaseSettings):
         default=30.0,
         alias="DEEPSEEK_TIMEOUT_SECONDS",
     )
+    ai_model_provider: str = Field(default="deepseek", alias="AI_MODEL_PROVIDER")
+    ai_model_api_key: str = Field(default="", alias="AI_MODEL_API_KEY")
+    ai_model_base_url: str = Field(default="", alias="AI_MODEL_BASE_URL")
+    ai_model_name: str = Field(default="", alias="AI_MODEL_NAME")
+    ai_model_timeout_seconds: float = Field(default=30.0, alias="AI_MODEL_TIMEOUT_SECONDS")
+    ai_model_supports_json_mode: bool = Field(default=True, alias="AI_MODEL_SUPPORTS_JSON_MODE")
     ai_search_max_history_messages: int = Field(
         default=12,
         alias="AI_SEARCH_MAX_HISTORY_MESSAGES",
     )
+    ai_agent_turn_mode: str = Field(default="dual", alias="AI_AGENT_TURN_MODE")
+    ai_agent_daily_turn_limit: int = Field(default=100, alias="AI_AGENT_DAILY_TURN_LIMIT")
+    ai_agent_minute_turn_limit: int = Field(default=10, alias="AI_AGENT_MINUTE_TURN_LIMIT")
+    ai_agent_max_sessions: int = Field(default=20, alias="AI_AGENT_MAX_SESSIONS")
+    ai_agent_max_session_turns: int = Field(default=100, alias="AI_AGENT_MAX_SESSION_TURNS")
+    langgraph_checkpoint_database_url: str = Field(
+        default="",
+        alias="LANGGRAPH_CHECKPOINT_DATABASE_URL",
+    )
+    langgraph_aes_key: str = Field(default="", alias="LANGGRAPH_AES_KEY")
 
 
 @lru_cache

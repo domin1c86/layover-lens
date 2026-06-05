@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routers import auth, bookings, cities, search, user
+from app.agents.search_agent import get_search_agent_service
 from app.services import get_search_service
 
 if settings.app_env.lower() == "production":
@@ -42,9 +43,10 @@ def root() -> dict[str, str]:
 @app.get("/health")
 def health_check() -> dict[str, str]:
     search_service = get_search_service()
+    agent_service = get_search_agent_service()
     return {
         "status": "ok",
         "data_source": search_service.describe_source(),
         "planner_backend": search_service.describe_planner(),
-        "ai_search_backend": search_service.describe_ai_search(),
+        "ai_search_backend": agent_service.describe_backend(),
     }

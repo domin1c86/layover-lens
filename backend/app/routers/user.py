@@ -40,6 +40,7 @@ from app.services.user_service import (
     require_csrf,
     set_auth_cookies,
 )
+from app.agents.search_agent import SearchAgentService, get_search_agent_service
 
 router = APIRouter(prefix="/user")
 
@@ -70,9 +71,16 @@ def delete_account(
     request: Request,
     current_user: AuthenticatedUser = Depends(get_current_user),
     user_service: UserService = Depends(get_user_service),
+    agent_service: SearchAgentService = Depends(get_search_agent_service),
 ) -> SuccessResponse:
     try:
+        ai_session_ids = user_service.list_user_ai_session_ids(current_user.user.id)
         user_service.delete_account(current_user.user.id, request=request)
+        for session_id in ai_session_ids:
+            try:
+                agent_service.delete_session(session_id)
+            except Exception as exc:
+                user_service.queue_ai_checkpoint_deletion(current_user.user.id, session_id, str(exc))
         return SuccessResponse(success=True)
     except UserServiceError as exc:
         _raise_http(exc)

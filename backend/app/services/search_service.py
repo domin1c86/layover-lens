@@ -20,7 +20,7 @@ from app.schemas import (
     SearchRequest,
     SearchResponse,
 )
-from app.services.ai_agent import AIChatClient, AIClientError, DeepSeekChatClient
+from app.agents.ai_agent import AIChatClient, AIClientError, DeepSeekChatClient
 from app.services.route_planner import (
     PlanningConstraints,
     PlanningTimeWindow,
