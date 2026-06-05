@@ -1131,6 +1131,14 @@
   .settings-panel__device-meta-grid {
     grid-template-columns: 1fr;
   }
+
+  .settings-panel__device-header {
+    flex-direction: column;
+  }
+
+  .settings-panel__device-meta-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Forgot password modal */
