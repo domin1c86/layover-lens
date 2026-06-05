@@ -3,6 +3,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_AI_SEARCH_ENABLED: ${VITE_AI_SEARCH_ENABLED:-false}
     ports:
       - "3200:3000"
     depends_on:
@@ -38,8 +40,19 @@ services:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-v4-flash}
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      - AI_MODEL_PROVIDER=${AI_MODEL_PROVIDER:-deepseek}
+      - AI_MODEL_API_KEY=${AI_MODEL_API_KEY:-}
+      - AI_MODEL_BASE_URL=${AI_MODEL_BASE_URL:-}
+      - AI_MODEL_NAME=${AI_MODEL_NAME:-}
+      - AI_MODEL_TIMEOUT_SECONDS=${AI_MODEL_TIMEOUT_SECONDS:-30}
+      - AI_MODEL_SUPPORTS_JSON_MODE=${AI_MODEL_SUPPORTS_JSON_MODE:-true}
+      - AI_AGENT_TURN_MODE=${AI_AGENT_TURN_MODE:-single}
+      - LANGGRAPH_CHECKPOINT_DATABASE_URL=postgresql://langgraph:${LANGGRAPH_POSTGRES_PASSWORD:-dev-langgraph-password}@postgres:5432/langgraph
+      - LANGGRAPH_AES_KEY=${LANGGRAPH_AES_KEY:-dev-langgraph-key-32-bytes-long!}
     depends_on:
       mysql:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     healthcheck:
       test:
@@ -53,6 +66,22 @@ services:
       timeout: 5s
       retries: 12
       start_period: 15s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: langgraph
+      POSTGRES_PASSWORD: ${LANGGRAPH_POSTGRES_PASSWORD:-dev-langgraph-password}
+      POSTGRES_DB: langgraph
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langgraph -d langgraph"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     restart: unless-stopped
 
   mysql:
@@ -79,3 +108,4 @@ services:
 
 volumes:
   mysql_data:
+  postgres_data:

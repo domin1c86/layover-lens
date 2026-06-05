@@ -131,10 +131,38 @@ CREATE TABLE IF NOT EXISTS ai_search_sessions (
     status VARCHAR(40) NOT NULL,
     last_message_preview VARCHAR(255) NOT NULL,
     response_json MEDIUMTEXT NOT NULL,
+    active_run_id VARCHAR(100),
+    active_run_started_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI搜索会话表';
+
+CREATE TABLE IF NOT EXISTS ai_agent_usage (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(40) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_ai_usage_user_time (user_id, created_at),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ai_agent_requests (
+    request_id VARCHAR(100) PRIMARY KEY,
+    user_id VARCHAR(40) NOT NULL,
+    session_id VARCHAR(80) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_ai_request_session (session_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (session_id) REFERENCES ai_search_sessions(session_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ai_checkpoint_deletions (
+    session_id VARCHAR(80) PRIMARY KEY,
+    user_id VARCHAR(40) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP NULL,
+    last_error VARCHAR(255)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS bookings (
     booking_id VARCHAR(40) PRIMARY KEY,

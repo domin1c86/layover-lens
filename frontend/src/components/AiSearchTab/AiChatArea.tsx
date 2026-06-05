@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import type { SearchResponse } from '../../types';
 import { useLocale } from '../../context/LocaleContext';
 import { Icon } from '../../icons';
+import ResultList from '../SearchTab/ResultList';
 import './AiSearchTab.css';
 
 export interface AiChatMessage {
@@ -9,6 +10,7 @@ export interface AiChatMessage {
   content: string;
   isSearchResult?: boolean;
   searchData?: SearchResponse;
+  streaming?: boolean;
 }
 
 interface AiChatAreaProps {
@@ -20,6 +22,7 @@ interface AiChatAreaProps {
   onReject: () => void;
   showConfirm: boolean;
   disabled?: boolean;
+  error?: string;
 }
 
 const EXAMPLES = [
@@ -29,7 +32,7 @@ const EXAMPLES = [
   { zh: '成都到杭州，优先时间短', en: 'Chengdu to Hangzhou, fastest route' },
 ];
 
-export default function AiChatArea({ messages, onSend, loading, status, onConfirm, onReject, showConfirm, disabled = false }: AiChatAreaProps) {
+export default function AiChatArea({ messages, onSend, loading, status, onConfirm, onReject, showConfirm, disabled = false, error = '' }: AiChatAreaProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { lang, t } = useLocale();
@@ -75,8 +78,17 @@ export default function AiChatArea({ messages, onSend, loading, status, onConfir
             {messages.map((msg, i) => (
               <div key={i} className={`ai-search__message ${msg.role === 'user' ? 'ai-search__message--user' : ''}`}>
                 <div className="ai-search__message-avatar">{msg.role === 'user' ? t('aiChat.userAvatar') : t('aiChat.aiAvatar')}</div>
-                <div className="ai-search__message-content">
+                <div className={`ai-search__message-content ${msg.searchData ? 'ai-search__message-content--results' : ''}`}>
                   {msg.content}
+                  {msg.searchData ? (
+                    <ResultList
+                      routes={msg.searchData.routes}
+                      loading={false}
+                      error=""
+                      searched
+                      dataNotice={msg.searchData.data_notice}
+                    />
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -98,6 +110,7 @@ export default function AiChatArea({ messages, onSend, loading, status, onConfir
                 </div>
               </div>
             )}
+            {error ? <div className="ai-search__stream-error">{error}</div> : null}
             <div ref={messagesEndRef} />
           </>
         )}

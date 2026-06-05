@@ -31,6 +31,48 @@
   text-decoration: underline;
 }
 
+.footer__link--button {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.footer-privacy__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 48%);
+}
+
+.footer-privacy__dialog {
+  width: min(520px, 100%);
+  max-height: min(600px, calc(100vh - 48px));
+  overflow-y: auto;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-md);
+  padding: 24px;
+  color: var(--body);
+}
+
+.footer-privacy__dialog h2 {
+  margin: 0 0 16px;
+  color: var(--ink);
+}
+
+.footer-privacy__dialog p {
+  margin: 0 0 16px;
+  line-height: 1.6;
+}
+
+.footer-privacy__dialog .btn {
+  background: #e8a55a;
+}
+
 .footer__legal {
   border-top: 1px solid var(--hairline);
   padding-top: var(--space-lg);

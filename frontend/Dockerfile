@@ -6,6 +6,8 @@ COPY package*.json ./
 RUN npm install
 
 COPY . .
+ARG VITE_AI_SEARCH_ENABLED=false
+ENV VITE_AI_SEARCH_ENABLED=${VITE_AI_SEARCH_ENABLED}
 RUN npm run build
 
 EXPOSE 3000

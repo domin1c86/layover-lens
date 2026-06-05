@@ -90,12 +90,23 @@ export interface CityListResponse {
 export interface AiMessage {
   role: 'user' | 'assistant';
   content: string;
+  search_response?: SearchResponse | null;
 }
+
+export type AiSessionStatus =
+  | 'collecting'
+  | 'collecting_required'
+  | 'collecting_optional'
+  | 'awaiting_confirmation'
+  | 'executing'
+  | 'results_available'
+  | 'failed'
+  | 'completed';
 
 // AI 会话响应
 export interface AiSessionResponse {
   session_id: string;
-  status: 'collecting' | 'awaiting_confirmation' | 'completed';
+  status: AiSessionStatus;
   assistant_message: string;
   conversation: AiMessage[];
   parsed_request: Partial<SearchRequest>;
@@ -105,11 +116,36 @@ export interface AiSessionResponse {
   ready_for_confirmation: boolean;
   search_executed: boolean;
   search_response: SearchResponse | null;
+  next_question_field?: string | null;
+  answered_fields?: string[];
+  skipped_fields?: string[];
 }
+
+export interface AiSessionSummary {
+  session_id: string;
+  title: string;
+  status: AiSessionStatus;
+  last_message_preview: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AiSessionListResponse {
+  sessions: AiSessionSummary[];
+}
+
+export type AiStreamEvent =
+  | { event: 'assistant_delta'; sequence: number; delta: string }
+  | { event: 'status'; sequence: number; status: AiSessionStatus }
+  | { event: 'search_result'; sequence: number; search_response: SearchResponse }
+  | { event: 'done'; sequence: number; response: AiSessionResponse }
+  | { event: 'error'; sequence: number; message: string };
 
 // AI 确认请求
 export interface AiConfirmRequest {
   confirmed: boolean;
+  language?: string;
+  request_id?: string;
 }
 
 export type SessionDuration = 'day' | 'week' | 'month' | 'half_year' | 'year' | 'forever';

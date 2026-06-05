@@ -125,6 +125,9 @@
   flex-shrink: 0;
   opacity: 0;
   transition: opacity 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+  border: none;
+  padding: 0;
+  background: transparent;
 }
 
 .ai-search__history-item:hover .ai-search__history-delete {
@@ -150,6 +153,9 @@
   flex-shrink: 0;
   opacity: 0;
   transition: opacity 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+  border: none;
+  padding: 0;
+  background: transparent;
 }
 
 .ai-search__history-item.active:hover .ai-search__history-edit {
@@ -394,6 +400,24 @@
   font-size: 15px;
   line-height: 1.6;
   color: var(--body);
+}
+
+.ai-search__message-content--results {
+  width: min(100%, 700px);
+  background: transparent;
+  padding: 0;
+}
+
+.ai-search__message-content--results > .results {
+  margin-top: 12px;
+}
+
+.ai-search__stream-error {
+  max-width: 768px;
+  width: 100%;
+  margin: 0 auto;
+  color: #b42318;
+  font-size: 14px;
 }
 
 .ai-search__message--user .ai-search__message-content {

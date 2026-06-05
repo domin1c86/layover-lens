@@ -132,6 +132,15 @@ docker compose exec backend python -m pytest tests/ -v
 | `ROUTE_PLANNER_BACKEND` | `auto` | 规划引擎：`python`、`cpp` 或 `auto`（自动检测） |
 | `DEEPSEEK_API_KEY` | — | DeepSeek API 密钥，AI 搜索功能必需 |
 | `DEEPSEEK_MODEL` | `deepseek-v4-flash` | AI 搜索使用的模型 |
+| `AI_MODEL_PROVIDER` | `deepseek` | Agent 模型提供方：`deepseek`、`openai_compatible` 或 `legacy` |
+| `AI_MODEL_API_KEY` | — | `openai_compatible` 提供方的 API 密钥 |
+| `AI_MODEL_BASE_URL` | — | `openai_compatible` 提供方的基础地址，不包含 `/chat/completions` |
+| `AI_MODEL_NAME` | — | `openai_compatible` 提供方的模型名称 |
+| `AI_MODEL_SUPPORTS_JSON_MODE` | `true` | 是否向兼容提供方发送 `response_format: {"type":"json_object"}` |
+| `AI_AGENT_TURN_MODE` | `single` | LangGraph Agent 模型调用模式：`dual` 或 `single` |
+| `LANGGRAPH_CHECKPOINT_DATABASE_URL` | — | LangGraph PostgreSQL Checkpoint 连接字符串 |
+| `LANGGRAPH_AES_KEY` | — | Checkpoint AES 加密密钥，必须为 16、24 或 32 字节 |
+| `VITE_AI_SEARCH_ENABLED` | `false` | 构建前端时是否开放 AI 搜索入口 |
 | `DATABASE_URL` | — | MySQL 连接字符串 |
 | `CORS_ORIGINS` | `["http://localhost:3000", ...]` | 允许的跨域来源 |
 | `MAX_ROUTES` | `8` | 每次搜索最多返回的路线数 |
