@@ -170,20 +170,30 @@ class PlaceSearchTool:
         del language
         if not settings.baidu_map_web_service_ak:
             raise PoiProviderError("Baidu map key is not configured.")
+        baidu_query = _baidu_compact_text(query)
+        baidu_region = _baidu_compact_text(city)
+        baidu_tags = [_baidu_compact_text(tag) for tag in tags[:5]]
+        baidu_tags = [tag for tag in baidu_tags if tag]
+        if not baidu_query or not baidu_region:
+            raise PoiProviderError("Baidu place search needs non-empty query and region.")
         self._reserve_quota("baidu", "place_search", _day_key(), settings.ai_agent_poi_baidu_place_daily_limit)
         self._enforce_qps("baidu", "place_search", settings.ai_agent_poi_baidu_place_qps_limit)
+        params = {
+            "ak": settings.baidu_map_web_service_ak,
+            "query": baidu_query,
+            "region": baidu_region,
+            "city_limit": "false",
+            "page_size": min(max(limit, 10), 20),
+            "page_num": 0,
+            "output": "json",
+            "scope": 2,
+            "ret_coordtype": "gcj02ll",
+        }
+        if baidu_tags:
+            params["tag"] = ",".join(baidu_tags)
         response = httpx.get(
             "https://api.map.baidu.com/place/v2/search",
-            params={
-                "ak": settings.baidu_map_web_service_ak,
-                "query": _query_text(query, tags),
-                "region": city,
-                "city_limit": "true",
-                "page_size": min(limit, 20),
-                "page_num": 0,
-                "output": "json",
-                "scope": 2,
-            },
+            params=params,
             timeout=settings.ai_agent_tool_timeout_seconds,
         )
         response.raise_for_status()
@@ -370,6 +380,10 @@ def _query_text(query: str, tags: list[str]) -> str:
         if value and value not in unique:
             unique.append(value)
     return " ".join(unique)
+
+
+def _baidu_compact_text(value: str) -> str:
+    return "".join(str(value or "").split())
 
 
 def _cache_key(provider: str, city: str, query: str, tags: list[str], *, dual_verify: bool) -> str:

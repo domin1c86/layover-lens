@@ -16,9 +16,13 @@ __pycache__/
 .venv/
 .venv39/
 .venv310/
+.env
+.env.*
+!.env.example
 .env/
 node_modules/
 dist/
 build/
 test-results/
 test/
+tests/
