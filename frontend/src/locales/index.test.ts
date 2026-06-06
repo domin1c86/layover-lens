@@ -85,6 +85,22 @@ describe('dictionary', () => {
     }
   })
 
+  it('contains AI place recommendation copy', () => {
+    const keys = [
+      'poiSource',
+      'poiSingleVerified',
+      'poiDualVerified',
+      'poiAddressUnknown',
+    ]
+
+    for (const key of keys) {
+      expect(dict.zh.aiChat).toHaveProperty(key)
+      expect(dict.en.aiChat).toHaveProperty(key)
+      expect(dict.zh.aiChat[key as keyof typeof dict.zh.aiChat]).toBeTruthy()
+      expect(dict.en.aiChat[key as keyof typeof dict.en.aiChat]).toBeTruthy()
+    }
+  })
+
   it('contains account settings copy required by profile flows', () => {
     const keys = [
       'nickname',

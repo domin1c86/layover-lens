@@ -87,10 +87,35 @@ export interface CityListResponse {
 }
 
 // AI 消息
+export interface AiToolResult {
+  name: string;
+  status: 'success' | 'error';
+  content: string;
+  data?: Record<string, unknown>;
+}
+
+export type PoiProvider = 'amap' | 'baidu';
+export type PoiVerificationStatus = 'single_verified' | 'dual_verified';
+
+export interface VerifiedPoi {
+  provider: PoiProvider;
+  provider_place_id: string;
+  name: string;
+  city: string;
+  address: string;
+  lat: number;
+  lng: number;
+  categories: string[];
+  tags: string[];
+  verification_status: PoiVerificationStatus;
+  source_providers?: PoiProvider[];
+}
+
 export interface AiMessage {
   role: 'user' | 'assistant';
   content: string;
   search_response?: SearchResponse | null;
+  tool_results?: AiToolResult[];
 }
 
 export type AiSessionStatus =
@@ -119,6 +144,8 @@ export interface AiSessionResponse {
   next_question_field?: string | null;
   answered_fields?: string[];
   skipped_fields?: string[];
+  tool_results?: AiToolResult[];
+  pending_reply?: boolean;
 }
 
 export interface AiSessionSummary {
@@ -137,6 +164,7 @@ export interface AiSessionListResponse {
 export type AiStreamEvent =
   | { event: 'assistant_delta'; sequence: number; delta: string }
   | { event: 'status'; sequence: number; status: AiSessionStatus }
+  | { event: 'tool_result'; sequence: number; tool_result: AiToolResult }
   | { event: 'search_result'; sequence: number; search_response: SearchResponse }
   | { event: 'done'; sequence: number; response: AiSessionResponse }
   | { event: 'error'; sequence: number; message: string };

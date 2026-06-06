@@ -77,6 +77,30 @@ class Settings(BaseSettings):
     ai_agent_minute_turn_limit: int = Field(default=10, alias="AI_AGENT_MINUTE_TURN_LIMIT")
     ai_agent_max_sessions: int = Field(default=20, alias="AI_AGENT_MAX_SESSIONS")
     ai_agent_max_session_turns: int = Field(default=100, alias="AI_AGENT_MAX_SESSION_TURNS")
+    ai_chat_retention_days: int = Field(default=30, alias="AI_CHAT_RETENTION_DAYS")
+    ai_agent_storage_soft_limit_mb: int = Field(default=0, alias="AI_AGENT_STORAGE_SOFT_LIMIT_MB")
+    ai_agent_storage_disable_new_writes: bool = Field(default=False, alias="AI_AGENT_STORAGE_DISABLE_NEW_WRITES")
+    ai_agent_cleanup_interval_minutes: int = Field(default=60, alias="AI_AGENT_CLEANUP_INTERVAL_MINUTES")
+    ai_agent_tools_enabled: bool = Field(default=True, alias="AI_AGENT_TOOLS_ENABLED")
+    ai_agent_weather_provider: str = Field(default="open_meteo", alias="AI_AGENT_WEATHER_PROVIDER")
+    ai_agent_weather_timeout_seconds: float = Field(default=8.0, alias="AI_AGENT_WEATHER_TIMEOUT_SECONDS")
+    ai_agent_tool_timeout_seconds: float = Field(default=8.0, alias="AI_AGENT_TOOL_TIMEOUT_SECONDS")
+    amap_web_service_key: str = Field(default="", alias="AMAP_WEB_SERVICE_KEY")
+    baidu_map_web_service_ak: str = Field(default="", alias="BAIDU_MAP_WEB_SERVICE_AK")
+    ai_agent_poi_enabled: bool = Field(default=True, alias="AI_AGENT_POI_ENABLED")
+    ai_agent_poi_primary_provider: str = Field(default="amap", alias="AI_AGENT_POI_PRIMARY_PROVIDER")
+    ai_agent_poi_dual_verify_enabled: bool = Field(default=False, alias="AI_AGENT_POI_DUAL_VERIFY_ENABLED")
+    ai_agent_poi_cache_ttl_days: int = Field(default=30, alias="AI_AGENT_POI_CACHE_TTL_DAYS")
+    ai_agent_poi_max_results: int = Field(default=5, alias="AI_AGENT_POI_MAX_RESULTS")
+    ai_agent_poi_amap_monthly_limit: int = Field(default=5000, alias="AI_AGENT_POI_AMAP_MONTHLY_LIMIT")
+    ai_agent_poi_amap_qps_limit: int = Field(default=3, alias="AI_AGENT_POI_AMAP_QPS_LIMIT")
+    ai_agent_poi_baidu_place_daily_limit: int = Field(default=100, alias="AI_AGENT_POI_BAIDU_PLACE_DAILY_LIMIT")
+    ai_agent_poi_baidu_place_qps_limit: int = Field(default=3, alias="AI_AGENT_POI_BAIDU_PLACE_QPS_LIMIT")
+    ai_agent_poi_baidu_geocode_daily_limit: int = Field(default=5000, alias="AI_AGENT_POI_BAIDU_GEOCODE_DAILY_LIMIT")
+    ai_agent_poi_baidu_reverse_geocode_daily_limit: int = Field(
+        default=300,
+        alias="AI_AGENT_POI_BAIDU_REVERSE_GEOCODE_DAILY_LIMIT",
+    )
     langgraph_checkpoint_database_url: str = Field(
         default="",
         alias="LANGGRAPH_CHECKPOINT_DATABASE_URL",

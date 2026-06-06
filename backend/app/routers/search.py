@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Callable, Iterator
+from typing import Callable, Iterator, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -43,7 +43,8 @@ router = APIRouter()
 
 
 def _raise_user_error(exc: UserServiceError) -> None:
-    raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    detail = {"message": str(exc), "code": exc.code} if exc.code else str(exc)
+    raise HTTPException(status_code=exc.status_code, detail=detail) from exc
 
 
 def _run_owned_session(
@@ -58,6 +59,7 @@ def _run_owned_session(
     user_service.assert_ai_session_owner(user_id, session_id)
     if not user_service.reserve_ai_request(user_id, session_id, request_id):
         return agent_service.get_session(session_id)
+    user_service.check_ai_storage_available()
     current = agent_service.get_session(session_id)
     if sum(1 for item in current.conversation if item.role == "user") >= settings.ai_agent_max_session_turns:
         raise UserServiceError("AI session turn limit reached.", 409)
@@ -72,7 +74,13 @@ def _run_owned_session(
         user_service.release_ai_session_run(user_id, session_id, run_id)
 
 
-def _sse_response(response: AISearchResponse) -> StreamingResponse:
+def _sse_response(
+    response: AISearchResponse,
+    *,
+    agent_service: Optional[SearchAgentService] = None,
+    language: str = "zh",
+    on_done: Optional[Callable[[AISearchResponse], None]] = None,
+) -> StreamingResponse:
     def generate() -> Iterator[str]:
         sequence = 0
 
@@ -83,12 +91,35 @@ def _sse_response(response: AISearchResponse) -> StreamingResponse:
             return f"event: {event_name}\ndata: {json.dumps(body, ensure_ascii=False)}\n\n"
 
         yield event("status", {"status": response.status.value})
-        text = response.assistant_message
-        for start in range(0, len(text), 8):
-            yield event("assistant_delta", {"delta": text[start:start + 8]})
-        if response.search_response is not None:
-            yield event("search_result", {"search_response": response.search_response.model_dump(mode="json")})
-        yield event("done", {"response": response.model_dump(mode="json")})
+        for tool_result in response.tool_results:
+            yield event("tool_result", {"tool_result": tool_result.model_dump(mode="json")})
+        final_response = response
+        if response.pending_reply and agent_service is not None:
+            chunks = []
+            try:
+                for chunk in agent_service.stream_reply_chunks(response, language=language):
+                    if not chunk:
+                        continue
+                    chunks.append(chunk)
+                    yield event("assistant_delta", {"delta": chunk})
+                final_response = agent_service.complete_streaming_reply(response.session_id, "".join(chunks).strip())
+                if on_done:
+                    on_done(final_response)
+            except AIClientError as exc:
+                yield event("error", {"message": str(exc), "code": "ai_stream_failed"})
+                final_response = agent_service.complete_streaming_reply(
+                    response.session_id,
+                    "AI response generation failed. Please try again.",
+                )
+                if on_done:
+                    on_done(final_response)
+        else:
+            text = response.assistant_message
+            for start in range(0, len(text), 8):
+                yield event("assistant_delta", {"delta": text[start:start + 8]})
+        if final_response.search_response is not None:
+            yield event("search_result", {"search_response": final_response.search_response.model_dump(mode="json")})
+        yield event("done", {"response": final_response.model_dump(mode="json")})
 
     return StreamingResponse(
         generate(),
@@ -135,8 +166,12 @@ def _create_ai_session(
     current_user: AuthenticatedUser,
     agent_service: SearchAgentService,
     user_service: UserService,
+    *,
+    stream_reply: bool = False,
 ) -> AISearchResponse:
     try:
+        _cleanup_user_checkpoints(current_user.user.id, agent_service, user_service)
+        user_service.check_ai_storage_available()
         user_service.check_ai_session_capacity(current_user.user.id)
         user_service.check_ai_agent_quota(current_user.user.id)
         session_id = new_ai_session_id()
@@ -145,6 +180,7 @@ def _create_ai_session(
             user_id=current_user.user.id,
             message=request.message,
             language=request.language or "zh",
+            stream_reply=stream_reply,
         )
         try:
             user_service.save_ai_session(
@@ -185,7 +221,13 @@ def create_ai_search_session_stream(
     agent_service: SearchAgentService = Depends(get_search_agent_service),
     user_service: UserService = Depends(get_user_service),
 ) -> StreamingResponse:
-    return _sse_response(_create_ai_session(request, current_user, agent_service, user_service))
+    response = _create_ai_session(request, current_user, agent_service, user_service, stream_reply=True)
+    return _sse_response(
+        response,
+        agent_service=agent_service,
+        language=request.language or "zh",
+        on_done=lambda final_response: user_service.save_ai_session(current_user.user.id, final_response),
+    )
 
 
 @router.get("/search/ai/sessions", response_model=AISessionListResponse)
@@ -220,6 +262,8 @@ def _append_ai_message(
     current_user: AuthenticatedUser,
     agent_service: SearchAgentService,
     user_service: UserService,
+    *,
+    stream_reply: bool = False,
 ) -> AISearchResponse:
     try:
         return _run_owned_session(
@@ -230,6 +274,7 @@ def _append_ai_message(
                 session_id,
                 message=request.message,
                 language=request.language or "zh",
+                stream_reply=stream_reply,
             ),
             agent_service=agent_service,
             user_service=user_service,
@@ -263,7 +308,20 @@ def append_ai_search_message_stream(
     agent_service: SearchAgentService = Depends(get_search_agent_service),
     user_service: UserService = Depends(get_user_service),
 ) -> StreamingResponse:
-    return _sse_response(_append_ai_message(session_id, request, current_user, agent_service, user_service))
+    response = _append_ai_message(
+        session_id,
+        request,
+        current_user,
+        agent_service,
+        user_service,
+        stream_reply=True,
+    )
+    return _sse_response(
+        response,
+        agent_service=agent_service,
+        language=request.language or "zh",
+        on_done=lambda final_response: user_service.save_ai_session(current_user.user.id, final_response),
+    )
 
 
 def _confirm_ai_session(
@@ -272,6 +330,8 @@ def _confirm_ai_session(
     current_user: AuthenticatedUser,
     agent_service: SearchAgentService,
     user_service: UserService,
+    *,
+    stream_reply: bool = False,
 ) -> AISearchResponse:
     try:
         return _run_owned_session(
@@ -282,6 +342,7 @@ def _confirm_ai_session(
                 session_id,
                 confirmed=request.confirmed,
                 language=request.language or "zh",
+                stream_reply=stream_reply,
             ),
             agent_service=agent_service,
             user_service=user_service,
@@ -315,7 +376,20 @@ def confirm_ai_search_session_stream(
     agent_service: SearchAgentService = Depends(get_search_agent_service),
     user_service: UserService = Depends(get_user_service),
 ) -> StreamingResponse:
-    return _sse_response(_confirm_ai_session(session_id, request, current_user, agent_service, user_service))
+    response = _confirm_ai_session(
+        session_id,
+        request,
+        current_user,
+        agent_service,
+        user_service,
+        stream_reply=True,
+    )
+    return _sse_response(
+        response,
+        agent_service=agent_service,
+        language=request.language or "zh",
+        on_done=lambda final_response: user_service.save_ai_session(current_user.user.id, final_response),
+    )
 
 
 @router.put("/search/ai/sessions/{session_id}", response_model=AISessionSummary, dependencies=[Depends(require_csrf)])

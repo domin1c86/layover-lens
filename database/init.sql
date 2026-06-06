@@ -164,6 +164,43 @@ CREATE TABLE IF NOT EXISTS ai_checkpoint_deletions (
     last_error VARCHAR(255)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS poi_cache (
+    cache_key VARCHAR(255) PRIMARY KEY,
+    provider VARCHAR(40) NOT NULL,
+    city VARCHAR(120) NOT NULL,
+    query_text VARCHAR(255) NOT NULL,
+    normalized_json MEDIUMTEXT NOT NULL,
+    raw_json MEDIUMTEXT NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_poi_cache_city_query (city, query_text),
+    INDEX idx_poi_cache_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS poi_rag_chunks (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    cache_key VARCHAR(255) NOT NULL,
+    provider VARCHAR(40) NOT NULL,
+    provider_place_id VARCHAR(120) NOT NULL,
+    poi_name VARCHAR(255) NOT NULL,
+    city VARCHAR(120) NOT NULL,
+    chunk_text TEXT NOT NULL,
+    tags_json TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_poi_rag_city (city),
+    INDEX idx_poi_rag_cache (cache_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS poi_provider_usage (
+    provider VARCHAR(40) NOT NULL,
+    api_name VARCHAR(60) NOT NULL,
+    period_key VARCHAR(20) NOT NULL,
+    call_count INT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (provider, api_name, period_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS bookings (
     booking_id VARCHAR(40) PRIMARY KEY,
     user_id VARCHAR(40) NOT NULL,

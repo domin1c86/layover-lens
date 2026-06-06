@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import type { SearchResponse } from '../../types';
+import { useEffect, useRef, useState } from 'react';
+import type { AiToolResult, SearchResponse, VerifiedPoi } from '../../types';
 import { useLocale } from '../../context/LocaleContext';
 import { Icon } from '../../icons';
 import ResultList from '../SearchTab/ResultList';
@@ -10,6 +10,7 @@ export interface AiChatMessage {
   content: string;
   isSearchResult?: boolean;
   searchData?: SearchResponse;
+  toolResults?: AiToolResult[];
   streaming?: boolean;
 }
 
@@ -25,17 +26,32 @@ interface AiChatAreaProps {
   error?: string;
 }
 
-const EXAMPLES = [
-  { zh: '北京到上海明天最便宜', en: 'Cheapest from Beijing to Shanghai tomorrow' },
-  { zh: '帮我找上海到广州的直达高铁', en: 'Direct high-speed train from Shanghai to Guangzhou' },
-  { zh: '北京到深圳，预算1000以内，尽量少换乘', en: 'Beijing to Shenzhen under 1000, fewest transfers' },
-  { zh: '成都到杭州，优先时间短', en: 'Chengdu to Hangzhou, fastest route' },
-];
+const EXAMPLE_KEYS = [
+  'aiChat.exampleCheap',
+  'aiChat.exampleDirectTrain',
+  'aiChat.exampleBudget',
+  'aiChat.exampleFastest',
+] as const;
 
-export default function AiChatArea({ messages, onSend, loading, status, onConfirm, onReject, showConfirm, disabled = false, error = '' }: AiChatAreaProps) {
+function getVerifiedPois(tool: AiToolResult): VerifiedPoi[] {
+  if (tool.name !== 'place_search') return [];
+  const pois = tool.data?.verified_pois;
+  return Array.isArray(pois) ? pois as VerifiedPoi[] : [];
+}
+
+export default function AiChatArea({
+  messages,
+  onSend,
+  loading,
+  onConfirm,
+  onReject,
+  showConfirm,
+  disabled = false,
+  error = '',
+}: AiChatAreaProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { lang, t } = useLocale();
+  const { t } = useLocale();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -48,8 +64,8 @@ export default function AiChatArea({ messages, onSend, loading, status, onConfir
     setInput('');
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleSend();
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') handleSend();
   };
 
   return (
@@ -66,20 +82,67 @@ export default function AiChatArea({ messages, onSend, loading, status, onConfir
             <h2>{t('aiChat.welcomeTitle')}</h2>
             <p>{t('aiChat.welcomeSubtitle')}</p>
             <div className="ai-search__examples">
-              {EXAMPLES.map((ex, i) => (
-                <button key={i} onClick={() => onSend(lang === 'en' ? ex.en : ex.zh)}>
-                  {lang === 'en' ? ex.en : ex.zh}
+              {EXAMPLE_KEYS.map((key) => (
+                <button key={key} onClick={() => onSend(t(key))}>
+                  {t(key)}
                 </button>
               ))}
             </div>
           </div>
         ) : (
           <>
-            {messages.map((msg, i) => (
-              <div key={i} className={`ai-search__message ${msg.role === 'user' ? 'ai-search__message--user' : ''}`}>
-                <div className="ai-search__message-avatar">{msg.role === 'user' ? t('aiChat.userAvatar') : t('aiChat.aiAvatar')}</div>
+            {messages.map((msg, index) => (
+              <div
+                key={index}
+                className={`ai-search__message ${msg.role === 'user' ? 'ai-search__message--user' : ''}`}
+              >
+                <div className="ai-search__message-avatar">
+                  {msg.role === 'user' ? t('aiChat.userAvatar') : t('aiChat.aiAvatar')}
+                </div>
                 <div className={`ai-search__message-content ${msg.searchData ? 'ai-search__message-content--results' : ''}`}>
-                  {msg.content}
+                  {msg.content ? <div>{msg.content}</div> : null}
+                  {msg.toolResults?.length ? (
+                    <div className="ai-search__tool-results">
+                      {msg.toolResults.map((tool, toolIndex) => (
+                        <div
+                          key={`${tool.name}-${toolIndex}`}
+                          className={`ai-search__tool-result ai-search__tool-result--${tool.status}`}
+                        >
+                          <span className="ai-search__tool-result-label">
+                            {tool.status === 'success' ? t('aiChat.toolResult') : t('aiChat.toolFailed')}
+                          </span>
+                          <span>{tool.content}</span>
+                          {getVerifiedPois(tool).length ? (
+                            <div className="ai-search__poi-list">
+                              {getVerifiedPois(tool).map((poi) => (
+                                <article key={`${poi.provider}-${poi.provider_place_id}`} className="ai-search__poi-card">
+                                  <div className="ai-search__poi-card-head">
+                                    <strong>{poi.name}</strong>
+                                    <span className={`ai-search__poi-badge ai-search__poi-badge--${poi.verification_status}`}>
+                                      {poi.verification_status === 'dual_verified'
+                                        ? t('aiChat.poiDualVerified')
+                                        : t('aiChat.poiSingleVerified')}
+                                    </span>
+                                  </div>
+                                  <div className="ai-search__poi-meta">
+                                    {t('aiChat.poiSource')}: {poi.source_providers?.join(' / ') || poi.provider}
+                                  </div>
+                                  <div className="ai-search__poi-address">{poi.address || t('aiChat.poiAddressUnknown')}</div>
+                                  {poi.tags?.length || poi.categories?.length ? (
+                                    <div className="ai-search__poi-tags">
+                                      {[...(poi.tags || []), ...(poi.categories || [])].slice(0, 5).map((tag) => (
+                                        <span key={tag}>{tag}</span>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </article>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   {msg.searchData ? (
                     <ResultList
                       routes={msg.searchData.routes}
@@ -122,7 +185,7 @@ export default function AiChatArea({ messages, onSend, loading, status, onConfir
             type="text"
             placeholder={t('aiChat.placeholder')}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleKeyDown}
             disabled={loading || disabled}
           />

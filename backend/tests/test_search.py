@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.data_source import reset_data_source_cache
 from app.main import app
-from app.agents.search_agent import reset_search_agent_service_cache
+from app.agents.search_agent import CONFIRM_PATTERNS, REJECT_PATTERNS, reset_search_agent_service_cache
 from app.services import reset_search_service_cache
 
 
@@ -44,6 +44,20 @@ def test_health_check() -> None:
     assert payload["data_source"].startswith("mock:")
     assert payload["planner_backend"] in {"python", "cpp"}
     assert payload["ai_search_backend"]
+    assert payload["ai_streaming"] == "reply"
+    assert payload["ai_tools_enabled"] is True
+    assert payload["ai_poi_enabled"] is True
+    assert payload["ai_poi_primary_provider"] == "amap"
+    assert payload["ai_poi_dual_verify_enabled"] is False
+    assert payload["ai_poi_quota_mode"] == "configured"
+
+
+def test_ai_chinese_confirm_and_reject_patterns_are_valid() -> None:
+    assert any(pattern.match("搜索") for pattern in CONFIRM_PATTERNS)
+    assert any(pattern.match("开始搜索") for pattern in CONFIRM_PATTERNS)
+    assert any(pattern.match("按这些条件搜索") for pattern in CONFIRM_PATTERNS)
+    assert any(pattern.match("取消搜索") for pattern in REJECT_PATTERNS)
+    assert any(pattern.match("继续修改") for pattern in REJECT_PATTERNS)
 
 
 def test_cities_endpoint_returns_seed_data() -> None:

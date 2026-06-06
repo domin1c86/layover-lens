@@ -350,7 +350,16 @@ export const aiSearchApi = {
         clearAuthSession();
         window.dispatchEvent(new Event('auth:unauthorized'));
       }
-      throw new Error(`AI stream failed with status ${response.status}`);
+      let message = `AI stream failed with status ${response.status}`;
+      try {
+        const payload = await response.json();
+        const detail = payload?.detail;
+        if (typeof detail === 'string') message = detail;
+        if (detail?.code) message = `${detail.code}: ${detail.message || message}`;
+      } catch {
+        // Keep the stable status fallback when the response body is not JSON.
+      }
+      throw new Error(message);
     }
     const reader = response.body.getReader();
     const decoder = new TextDecoder();

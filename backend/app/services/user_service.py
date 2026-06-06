@@ -14,6 +14,7 @@ from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
 import pyotp
+import psycopg
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -72,9 +73,15 @@ _bearer = HTTPBearer(auto_error=False)
 
 
 class UserServiceError(RuntimeError):
-    def __init__(self, message: str, status_code: int = status.HTTP_400_BAD_REQUEST) -> None:
+    def __init__(
+        self,
+        message: str,
+        status_code: int = status.HTTP_400_BAD_REQUEST,
+        code: Optional[str] = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -2006,6 +2013,30 @@ class UserService:
         if len(self._ai_sessions.get(user_id, {})) >= settings.ai_agent_max_sessions:
             raise UserServiceError("AI session limit reached.", status.HTTP_409_CONFLICT)
 
+    def check_ai_storage_available(self) -> None:
+        if settings.ai_agent_storage_disable_new_writes:
+            raise UserServiceError(
+                "AI session storage is temporarily unavailable.",
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "ai_storage_guard_active",
+            )
+        limit_mb = settings.ai_agent_storage_soft_limit_mb
+        if limit_mb <= 0 or not settings.langgraph_checkpoint_database_url:
+            return
+        try:
+            with psycopg.connect(settings.langgraph_checkpoint_database_url, connect_timeout=3) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_database_size(current_database())")
+                    size_bytes = int(cursor.fetchone()[0])
+        except Exception:
+            return
+        if size_bytes >= limit_mb * 1024 * 1024:
+            raise UserServiceError(
+                "AI session storage is temporarily unavailable.",
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "ai_storage_guard_active",
+            )
+
     def reserve_ai_request(self, user_id: str, session_id: str, request_id: str) -> bool:
         if self._mysql_available:
             try:
@@ -2083,6 +2114,14 @@ class UserService:
                 return [str(row[0]) for row in cursor.fetchall()]
         return list(self._ai_sessions.get(user_id, {}).keys())
 
+    def list_user_ids_with_ai_sessions(self) -> list[str]:
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute("SELECT DISTINCT user_id FROM ai_search_sessions")
+                return [str(row[0]) for row in cursor.fetchall()]
+        return list(self._ai_sessions.keys())
+
     def list_expired_ai_session_ids(self, user_id: str) -> list[str]:
         if not self._mysql_available:
             return []
@@ -2092,18 +2131,22 @@ class UserService:
                 """
                 SELECT sessions.session_id, sessions.updated_at, preferences.chat_retention_days
                 FROM ai_search_sessions AS sessions
-                JOIN user_preferences AS preferences ON preferences.user_id = sessions.user_id
-                WHERE sessions.user_id = %s AND preferences.chat_retention_days >= 0
+                LEFT JOIN user_preferences AS preferences ON preferences.user_id = sessions.user_id
+                WHERE sessions.user_id = %s
                 """,
                 (user_id,),
             )
             rows = cursor.fetchall()
         now = _utcnow()
-        return [
-            str(row["session_id"])
-            for row in rows
-            if row["updated_at"] <= now - timedelta(days=int(row["chat_retention_days"]))
-        ]
+        expired = []
+        for row in rows:
+            retention_days = row.get("chat_retention_days")
+            retention = settings.ai_chat_retention_days if retention_days is None else int(retention_days)
+            if retention < 0:
+                continue
+            if row["updated_at"] <= now - timedelta(days=retention):
+                expired.append(str(row["session_id"]))
+        return expired
 
     def list_pending_ai_checkpoint_deletions(self, user_id: str) -> list[str]:
         if not self._mysql_available:

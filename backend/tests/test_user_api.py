@@ -753,3 +753,29 @@ def test_ai_stream_returns_ordered_sse_events(monkeypatch) -> None:
     assert "event: assistant_delta" in body
     assert "event: done" in body
     assert body.index("event: status") < body.index("event: done")
+
+
+def test_ai_storage_guard_blocks_new_ai_writes(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "ai_agent_storage_disable_new_writes", True)
+    client = _fresh_client()
+    _, headers = _register(client, _unique_email("ai-storage-guard"))
+
+    response = client.post(
+        "/api/v1/search/ai/sessions",
+        headers=headers,
+        json={"message": "Beijing to Shanghai", "language": "en"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "ai_storage_guard_active"
+
+    search_response = client.post(
+        "/api/v1/search",
+        json={
+            "from_city": "BJ",
+            "to_city": "SH",
+            "travel_date": "2026-06-05",
+            "optimization_target": "balanced",
+        },
+    )
+    assert search_response.status_code == 200

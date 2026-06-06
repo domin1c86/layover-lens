@@ -25,6 +25,23 @@ class _FakeResponse:
         return self._payload
 
 
+class _FakeStreamResponse:
+    def __init__(self, lines: list[str]) -> None:
+        self._lines = lines
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        return None
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def iter_lines(self):
+        yield from self._lines
+
+
 def _set_openai_compatible(monkeypatch) -> None:
     monkeypatch.setattr(settings, "ai_model_provider", "openai_compatible")
     monkeypatch.setattr(settings, "ai_model_api_key", "test-key")
@@ -104,6 +121,41 @@ def test_openai_compatible_reply_does_not_force_json_mode(monkeypatch) -> None:
 
     assert "response_format" not in captured["json"]
     assert message == "What date do you want to travel?"
+
+
+def test_openai_compatible_stream_reply_reads_sse_deltas(monkeypatch) -> None:
+    _set_openai_compatible(monkeypatch)
+    captured = {}
+
+    def fake_stream(method, url, *, headers, json, timeout):
+        captured["method"] = method
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        captured["timeout"] = timeout
+        return _FakeStreamResponse([
+            'data: {"choices":[{"delta":{"content":"What "}}]}',
+            'data: {"choices":[{"delta":{"content":"date?"}}]}',
+            "data: [DONE]",
+        ])
+
+    monkeypatch.setattr("app.agents.search_agent_models.httpx.stream", fake_stream)
+
+    chunks = list(OpenAICompatibleHttpAgentModel().stream_reply(
+        language="en",
+        parsed_request=ParsedSearchRequest(from_city="Beijing", to_city="Shanghai"),
+        missing_fields=["travel_date"],
+        next_question_field=None,
+        ready_for_confirmation=False,
+        conversation=[],
+    ))
+
+    assert captured["method"] == "POST"
+    assert captured["url"] == "https://mimo.example/v1/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer test-key"
+    assert captured["json"]["stream"] is True
+    assert captured["timeout"] == 12.0
+    assert chunks == ["What ", "date?"]
 
 
 def test_openai_compatible_extract_rejects_invalid_json(monkeypatch) -> None:

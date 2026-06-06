@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 from threading import Lock
-from typing import Optional, TypedDict
+from typing import Iterator, Optional, TypedDict
 from uuid import uuid4
 
 import psycopg
@@ -28,6 +28,7 @@ from app.agents.search_agent_models import (
     selected_agent_model_provider,
     validate_search_agent_model_config,
 )
+from app.agents.tools import AgentToolError, execute_agent_tool
 from app.services.search_service import SearchService, get_search_service
 
 
@@ -47,11 +48,11 @@ OPTIONAL_FIELD_ORDER = [
 CONFIRM_PATTERNS = (
     re.compile(r"^\s*(start|run|confirm)?\s*(search)\s*[.!?]?\s*$", re.I),
     re.compile(r"^\s*(search now|start search|confirm search|run search)\s*[.!?]?\s*$", re.I),
-    re.compile(r"^\s*(搜索|确认搜索|开始搜索|执行搜索|现在搜索|就这样搜索)\s*[。.!?？]?\s*$"),
+    re.compile("^\\s*(\\u641c\\u7d22|\\u5f00\\u59cb\\u641c\\u7d22|\\u786e\\u8ba4\\u641c\\u7d22|\\u6267\\u884c\\u641c\\u7d22|\\u73b0\\u5728\\u641c\\u7d22|\\u5c31\\u8fd9\\u6837\\u641c\\u7d22|\\u6309\\u8fd9\\u4e9b\\u6761\\u4ef6\\u641c\\u7d22)\\s*[\\u3002.!?\\uff1f]?\\s*$"),
 )
 REJECT_PATTERNS = (
     re.compile(r"^\s*(not yet|do not search|cancel search)\s*[.!?]?\s*$", re.I),
-    re.compile(r"^\s*(不要搜索|暂不搜索|先不搜索|取消搜索)\s*[。.!?？]?\s*$"),
+    re.compile("^\\s*(\\u4e0d\\u8981\\u641c\\u7d22|\\u6682\\u4e0d\\u641c\\u7d22|\\u5148\\u4e0d\\u641c\\u7d22|\\u53d6\\u6d88\\u641c\\u7d22|\\u7ee7\\u7eed\\u4fee\\u6539)\\s*[\\u3002.!?\\uff1f]?\\s*$"),
 )
 
 
@@ -74,6 +75,10 @@ class AgentState(TypedDict, total=False):
     ready_for_confirmation: bool
     search_executed: bool
     intent: str
+    tool_requests: list[dict]
+    tool_results: list[dict]
+    pending_reply: bool
+    stream_reply: bool
 
 
 class SearchAgentService:
@@ -119,14 +124,16 @@ class SearchAgentService:
     def _build_graph(self):
         builder = StateGraph(AgentState)
         builder.add_node("understand", self._understand_node)
+        builder.add_node("tool", self._tool_node)
         builder.add_node("respond", self._respond_node)
         builder.add_node("search", self._search_node)
         builder.add_edge(START, "understand")
         builder.add_conditional_edges(
             "understand",
             self._route_after_understanding,
-            {"search": "search", "respond": "respond"},
+            {"search": "search", "tool": "tool", "respond": "respond"},
         )
+        builder.add_edge("tool", "respond")
         builder.add_edge("search", END)
         builder.add_edge("respond", END)
         return builder.compile(checkpointer=self._checkpointer)
@@ -138,7 +145,15 @@ class SearchAgentService:
         with self._locks_guard:
             return self._locks.setdefault(session_id, Lock())
 
-    def create_session(self, *, session_id: str, user_id: str, message: str, language: str) -> AISearchResponse:
+    def create_session(
+        self,
+        *,
+        session_id: str,
+        user_id: str,
+        message: str,
+        language: str,
+        stream_reply: bool = False,
+    ) -> AISearchResponse:
         initial: AgentState = {
             "session_id": session_id,
             "user_id": user_id,
@@ -151,24 +166,45 @@ class SearchAgentService:
             "skipped_fields": [],
             "search_history": [],
             "search_executed": False,
+            "tool_results": [],
+            "stream_reply": stream_reply,
         }
         with self._session_lock(session_id):
             result = self._graph.invoke(initial, self._thread_config(session_id), durability="sync")
         return self._to_response(result)
 
-    def append_message(self, session_id: str, *, message: str, language: str) -> AISearchResponse:
+    def append_message(
+        self,
+        session_id: str,
+        *,
+        message: str,
+        language: str,
+        stream_reply: bool = False,
+    ) -> AISearchResponse:
         with self._session_lock(session_id):
             result = self._graph.invoke(
-                {"user_message": message, "language": language, "action": "message"},
+                {"user_message": message, "language": language, "action": "message", "stream_reply": stream_reply},
                 self._thread_config(session_id),
                 durability="sync",
             )
         return self._to_response(result)
 
-    def confirm(self, session_id: str, *, confirmed: bool, language: str) -> AISearchResponse:
+    def confirm(
+        self,
+        session_id: str,
+        *,
+        confirmed: bool,
+        language: str,
+        stream_reply: bool = False,
+    ) -> AISearchResponse:
         with self._session_lock(session_id):
             result = self._graph.invoke(
-                {"user_message": "", "language": language, "action": "confirm" if confirmed else "reject"},
+                {
+                    "user_message": "",
+                    "language": language,
+                    "action": "confirm" if confirmed else "reject",
+                    "stream_reply": stream_reply,
+                },
                 self._thread_config(session_id),
                 durability="sync",
             )
@@ -229,7 +265,7 @@ class SearchAgentService:
             intent = extraction.intent
 
         if message:
-            conversation.append(AIChatMessage(role="user", content=message))
+            conversation.append(AIChatMessage(role="user", content=message).model_dump(mode="json"))
         for field_name in extraction.cleared_fields:
             if field_name in ParsedSearchRequest.model_fields:
                 setattr(parsed, field_name, [] if field_name in {"excluded_cities", "required_transfer_cities"} else None)
@@ -250,7 +286,7 @@ class SearchAgentService:
             None,
         ) if ready else None
         return {
-            "conversation": [item.model_dump(mode="json") for item in conversation],
+            "conversation": conversation,
             "parsed_request": parsed.model_dump(mode="json"),
             "answered_fields": sorted(answered),
             "skipped_fields": sorted(skipped),
@@ -258,6 +294,9 @@ class SearchAgentService:
             "ready_for_confirmation": ready,
             "intent": intent,
             "assistant_message": extraction.assistant_message,
+            "tool_requests": [item.model_dump(mode="json") for item in extraction.tool_requests[:2]],
+            "tool_results": [],
+            "pending_reply": False,
             "status": (
                 AISearchSessionStatus.COLLECTING_REQUIRED.value
                 if missing else AISearchSessionStatus.COLLECTING_OPTIONAL.value
@@ -268,7 +307,33 @@ class SearchAgentService:
 
     @staticmethod
     def _route_after_understanding(state: AgentState) -> str:
-        return "search" if state.get("intent") == "confirm_search" and state.get("ready_for_confirmation") else "respond"
+        if state.get("intent") == "confirm_search" and state.get("ready_for_confirmation"):
+            return "search"
+        if state.get("tool_requests"):
+            return "tool"
+        return "respond"
+
+    def _tool_node(self, state: AgentState) -> dict:
+        results = []
+        for request in state.get("tool_requests") or []:
+            name = str(request.get("name") or "")
+            arguments = request.get("arguments") if isinstance(request.get("arguments"), dict) else {}
+            try:
+                result = execute_agent_tool(name, arguments)
+                results.append({
+                    "name": result.name,
+                    "status": result.status,
+                    "content": result.content,
+                    "data": result.data,
+                })
+            except AgentToolError as exc:
+                results.append({
+                    "name": name or "unknown",
+                    "status": "error",
+                    "content": str(exc),
+                    "data": {},
+                })
+        return {"tool_results": results, "tool_requests": []}
 
     def _search_node(self, state: AgentState) -> dict:
         parsed = ParsedSearchRequest.model_validate(state.get("parsed_request") or {})
@@ -278,7 +343,7 @@ class SearchAgentService:
         response = self._search_service.search(final_request)
         language = state.get("language", "zh")
         message = (
-            "已按当前条件完成搜索。你可以继续补充或修改条件后再次搜索。"
+            "\u5df2\u6309\u5f53\u524d\u6761\u4ef6\u5b8c\u6210\u641c\u7d22\u3002\u4f60\u53ef\u4ee5\u7ee7\u7eed\u8865\u5145\u6216\u4fee\u6539\u6761\u4ef6\u540e\u518d\u6b21\u641c\u7d22\u3002"
             if language == "zh"
             else "Search complete. You can continue refining the conditions and search again."
         )
@@ -296,6 +361,7 @@ class SearchAgentService:
             "search_executed": True,
             "status": AISearchSessionStatus.RESULTS_AVAILABLE.value,
             "summary": self._search_service._build_ai_summary(parsed, []),
+            "pending_reply": False,
         }
 
     def _respond_node(self, state: AgentState) -> dict:
@@ -305,12 +371,23 @@ class SearchAgentService:
         language = state.get("language", "zh")
         if state.get("intent") == "reject_search":
             message = (
-                "好的，我们继续调整条件。你可以告诉我想修改的内容。"
+                "\u597d\u7684\uff0c\u6211\u4eec\u7ee7\u7eed\u8c03\u6574\u6761\u4ef6\u3002\u4f60\u53ef\u4ee5\u544a\u8bc9\u6211\u60f3\u4fee\u6539\u7684\u5185\u5bb9\u3002"
                 if language == "zh"
                 else "Okay, we can keep refining the conditions. Tell me what you want to change."
             )
         else:
             message = state.get("assistant_message", "").strip()
+            if state.get("stream_reply"):
+                return {
+                    "assistant_message": "",
+                    "pending_reply": True,
+                    "status": (
+                        AISearchSessionStatus.COLLECTING_REQUIRED.value
+                        if missing
+                        else AISearchSessionStatus.AWAITING_CONFIRMATION.value
+                    ),
+                    "summary": self._search_service._build_ai_summary(parsed, missing),
+                }
             if not message or settings.ai_agent_turn_mode == "dual":
                 message = self._get_model().reply(
                     language=language,
@@ -319,9 +396,16 @@ class SearchAgentService:
                     next_question_field=state.get("next_question_field"),
                     ready_for_confirmation=ready,
                     conversation=[AIChatMessage.model_validate(item) for item in state.get("conversation", [])],
+                    tool_results=state.get("tool_results") or [],
                 )
         conversation = list(state.get("conversation") or [])
-        conversation.append(AIChatMessage(role="assistant", content=message).model_dump(mode="json"))
+        conversation.append(
+            AIChatMessage(
+                role="assistant",
+                content=message,
+                tool_results=state.get("tool_results") or [],
+            ).model_dump(mode="json")
+        )
         status = (
             AISearchSessionStatus.COLLECTING_REQUIRED.value
             if missing
@@ -332,7 +416,44 @@ class SearchAgentService:
             "assistant_message": message,
             "status": status,
             "summary": self._search_service._build_ai_summary(parsed, missing),
+            "pending_reply": False,
         }
+
+    def stream_reply_chunks(self, response: AISearchResponse, *, language: str = "zh") -> Iterator[str]:
+        yield from self._get_model().stream_reply(
+            language=language,
+            parsed_request=response.parsed_request,
+            missing_fields=response.missing_fields,
+            next_question_field=response.next_question_field,
+            ready_for_confirmation=response.ready_for_confirmation,
+            conversation=response.conversation,
+            tool_results=[item.model_dump(mode="json") for item in response.tool_results],
+        )
+
+    def complete_streaming_reply(self, session_id: str, message: str) -> AISearchResponse:
+        with self._session_lock(session_id):
+            snapshot = self._graph.get_state(self._thread_config(session_id))
+            if not snapshot.values:
+                raise ValueError("AI session not found.")
+            state = dict(snapshot.values)
+            conversation = list(state.get("conversation") or [])
+            conversation.append(
+                AIChatMessage(
+                    role="assistant",
+                    content=message or " ",
+                    tool_results=state.get("tool_results") or [],
+                ).model_dump(mode="json")
+            )
+            self._graph.update_state(
+                self._thread_config(session_id),
+                {
+                    "conversation": conversation,
+                    "assistant_message": message,
+                    "pending_reply": False,
+                    "stream_reply": False,
+                },
+            )
+        return self.get_session(session_id)
 
     def _to_response(self, state: AgentState) -> AISearchResponse:
         parsed = ParsedSearchRequest.model_validate(state.get("parsed_request") or {})
@@ -356,6 +477,8 @@ class SearchAgentService:
             next_question_field=state.get("next_question_field"),
             answered_fields=state.get("answered_fields") or [],
             skipped_fields=state.get("skipped_fields") or [],
+            tool_results=state.get("tool_results") or [],
+            pending_reply=bool(state.get("pending_reply")),
         )
 
 

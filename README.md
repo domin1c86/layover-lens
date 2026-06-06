@@ -138,6 +138,26 @@ docker compose exec backend python -m pytest tests/ -v
 | `AI_MODEL_NAME` | — | `openai_compatible` 提供方的模型名称 |
 | `AI_MODEL_SUPPORTS_JSON_MODE` | `true` | 是否向兼容提供方发送 `response_format: {"type":"json_object"}` |
 | `AI_AGENT_TURN_MODE` | `single` | LangGraph Agent 模型调用模式：`dual` 或 `single` |
+| `AI_CHAT_RETENTION_DAYS` | `30` | AI 对话默认保留天数；用户偏好优先，`-1` 表示不自动清理 |
+| `AI_AGENT_MAX_SESSIONS` | `20` | 每个用户最多保留的 AI 会话数量 |
+| `AI_AGENT_STORAGE_SOFT_LIMIT_MB` | `0` | AI checkpoint 存储软上限；`0` 表示关闭软上限检查 |
+| `AI_AGENT_STORAGE_DISABLE_NEW_WRITES` | `false` | 为 `true` 时暂停新建/继续 AI 对话，仍允许读取和删除 |
+| `AI_AGENT_CLEANUP_INTERVAL_MINUTES` | `60` | AI 过期会话与 checkpoint 删除队列的后台清理间隔 |
+| `AI_AGENT_TOOLS_ENABLED` | `true` | 是否允许 Agent 调用后端白名单只读工具 |
+| `AI_AGENT_WEATHER_PROVIDER` | `open_meteo` | 天气工具提供方，当前支持 Open-Meteo |
+| `AI_AGENT_WEATHER_TIMEOUT_SECONDS` | `8` | 天气接口请求超时时间 |
+| `AI_AGENT_TOOL_TIMEOUT_SECONDS` | `8` | 单次 Agent 工具执行超时时间 |
+| `AMAP_WEB_SERVICE_KEY` | — | 高德 Web 服务 Key，仅后端使用 |
+| `BAIDU_MAP_WEB_SERVICE_AK` | — | 百度地图 Web 服务 AK，仅后端使用 |
+| `AI_AGENT_POI_ENABLED` | `true` | 是否启用真实 POI 查询工具 |
+| `AI_AGENT_POI_PRIMARY_PROVIDER` | `amap` | POI 主 provider：`amap` 或 `baidu` |
+| `AI_AGENT_POI_DUAL_VERIFY_ENABLED` | `false` | 是否启用高德/百度双源交叉验证 |
+| `AI_AGENT_POI_CACHE_TTL_DAYS` | `30` | POI 缓存和轻量 RAG chunk 有效天数 |
+| `AI_AGENT_POI_MAX_RESULTS` | `5` | 每次地点推荐最多返回 POI 数 |
+| `AI_AGENT_POI_AMAP_MONTHLY_LIMIT` | `5000` | 高德基础搜索个人认证月配额默认值 |
+| `AI_AGENT_POI_AMAP_QPS_LIMIT` | `3` | 高德基础搜索个人认证 QPS 默认值 |
+| `AI_AGENT_POI_BAIDU_PLACE_DAILY_LIMIT` | `100` | 百度 Web API 地点检索个人日配额默认值 |
+| `AI_AGENT_POI_BAIDU_PLACE_QPS_LIMIT` | `3` | 百度 Web API 地点检索 QPS 默认值 |
 | `LANGGRAPH_CHECKPOINT_DATABASE_URL` | — | LangGraph PostgreSQL Checkpoint 连接字符串 |
 | `LANGGRAPH_AES_KEY` | — | Checkpoint AES 加密密钥，必须为 16、24 或 32 字节 |
 | `VITE_AI_SEARCH_ENABLED` | `false` | 构建前端时是否开放 AI 搜索入口 |

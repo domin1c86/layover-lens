@@ -46,6 +46,7 @@ function messagesFromResponse(response: AiSessionResponse): AiChatMessage[] {
     content: message.content,
     isSearchResult: Boolean(message.search_response),
     searchData: message.search_response || undefined,
+    toolResults: message.tool_results || undefined,
   }));
 }
 
@@ -140,8 +141,29 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
       }));
     }
     if (event.event === 'status') updateSession(id, { status: event.status });
+    if (event.event === 'tool_result') {
+      setSessions((previous) => previous.map((session) => {
+        if (session.id !== id) return session;
+        const messages = [...session.messages];
+        const last = messages[messages.length - 1];
+        if (last?.role === 'assistant' && last.streaming) {
+          messages[messages.length - 1] = {
+            ...last,
+            toolResults: [...(last.toolResults || []), event.tool_result],
+          };
+        } else {
+          messages.push({
+            role: 'assistant',
+            content: '',
+            toolResults: [event.tool_result],
+            streaming: true,
+          });
+        }
+        return { ...session, messages };
+      }));
+    }
     if (event.event === 'done') applyResponse(id, event.response);
-  }, [applyResponse, updateSession]);
+  }, [applyResponse, t, updateSession]);
 
   const runStream = useCallback(async (
     id: string,
@@ -156,7 +178,8 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
       await execute((event) => handleStreamEvent(id, event), controller.signal);
     } catch (streamError) {
       if (!controller.signal.aborted) {
-        setError(t('aiChat.requestFailed'));
+        const message = streamError instanceof Error ? streamError.message : '';
+        setError(message.includes('ai_storage_guard_active') ? t('aiChat.storageGuard') : t('aiChat.requestFailed'));
         try {
           const session = sessions.find((item) => item.id === id);
           if (session?.sessionId) applyResponse(id, await aiSearchApi.getSession(session.sessionId));

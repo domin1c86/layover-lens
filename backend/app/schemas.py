@@ -150,10 +150,18 @@ class ParsedSearchRequest(BaseModel):
     allow_overnight: Optional[bool] = None
 
 
+class AIToolResult(BaseModel):
+    name: str
+    status: Literal["success", "error"] = "success"
+    content: str
+    data: dict = Field(default_factory=dict)
+
+
 class AIChatMessage(BaseModel):
     role: str = Field(pattern="^(user|assistant)$")
     content: str = Field(min_length=1, max_length=4000)
     search_response: Optional[SearchResponse] = None
+    tool_results: list[AIToolResult] = Field(default_factory=list)
 
 
 class AISearchSessionStatus(str, Enum):
@@ -200,6 +208,8 @@ class AISearchResponse(BaseModel):
     next_question_field: Optional[str] = None
     answered_fields: list[str] = Field(default_factory=list)
     skipped_fields: list[str] = Field(default_factory=list)
+    tool_results: list[AIToolResult] = Field(default_factory=list)
+    pending_reply: bool = False
 
 
 class SummarizeRequest(BaseModel):
