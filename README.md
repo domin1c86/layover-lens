@@ -1,207 +1,205 @@
+<p align="right">
+  中文 | <a href="./README_EN.md">English</a>
+</p>
+
 <p align="center">
-  <h1 align="center">✈️🚄 中转助手 Layover Lens</h1>
-  <p align="center"><em>智能航班与火车中转路线搜索引擎</em></p>
+  <h1 align="center">Layover Lens 中转助手</h1>
+  <p align="center"><em>面向中国城市间出行的多交通方式路线策略推荐系统</em></p>
 </p>
 
 ---
 
-**中转助手（Layover Lens）** 是一个多交通方式的中转路线搜索平台，能够组合航班与火车，为旅客找出城市间的最优中转方案。用户无需分别在各大平台搜索，即可一站式获取按价格、耗时、换乘次数或综合评分排序的最佳路线。
+Layover Lens 是一个用于验证“城市级交通策略推荐”的开源项目。当前版本不承诺实时票价、实时余票或具体可购买班次，而是根据出发地、目的地、日期和偏好，给出类似 `北京 -> 南京 -> 成都` 的路线策略，并为每一段提供估算费用、估算耗时、服务密度、置信度和外部票务平台查询入口。
 
-## 系统架构
+项目目标是先把搜索体验、策略算法、AI 参数收集、反馈标注和未来训练闭环跑通；后续如果接入真实火车/航班供应商，只需要替换分段 provider 和训练数据源，不需要推翻前端和 API 契约。
 
+## 当前能力
+
+- **路线策略推荐**：默认返回城市路径方案，不再主展示具体班次明细。
+- **C++ 算法核心**：交通图谱构建、候选召回、分段估算、价格保护和线性排序均由 C++17/pybind11 执行。
+- **Mock 与历史 CSV 双数据模式**：无 CSV 时使用当前 mock 数据；有离线构建产物时可使用历史 CSV 聚合图谱和线性权重模型。
+- **AI 对话搜索**：基于 LangGraph 架构，逐步收集出发地、目的地、日期等必要参数，用户确认后执行策略搜索。
+- **模型适配器**：支持 DeepSeek，并预留 OpenAI-compatible HTTP 直连模型适配。
+- **Agent 工具**：支持日期、天气、真实 POI 查询工具；POI 以高德为主、百度兜底，并带轻量 RAG 缓存。
+- **账号系统**：后端真实注册、登录、退出、HttpOnly Cookie 会话、CSRF、设备管理、TOTP 双重验证。
+- **前端体验**：普通搜索、AI 搜索、收藏、本地头像、主题切换、中英文、路线评价和外部票务跳转提醒。
+- **反馈闭环**：路线评价可匿名提交到 MySQL，支持后续人工标注和模型训练数据导出。
+
+## 架构概览
+
+```text
+React 18 + TypeScript + Vite frontend (:3000)
+  -> Axios / fetch API client
+  -> Nginx / Vite proxy for /api
+
+FastAPI backend (:8000)
+  -> auth / user / cities / search / bookings routers
+  -> SearchService orchestrates route strategy search
+  -> LangGraph-based AI agent with tools and checkpoint storage
+
+C++ planner module
+  -> TrafficGraphBuilder
+  -> CandidateRetriever
+  -> RankingModel
+  -> pybind11 bindings used by Python wrapper
+
+MySQL 8.0
+  -> users, auth tokens, devices, preferences
+  -> mock catalog data, favorites, route feedback
+  -> POI cache and training metadata
+
+PostgreSQL
+  -> LangGraph checkpoint storage for AI sessions
 ```
-┌──────────────────────────────────────────────────┐
-│  前端      React 18 + TypeScript + Vite         │
-│           深色模式 · 中英文切换 · motion 动画    │
-│           端口 3000                              │
-├──────────────────────────────────────────────────┤
-│  API 网关  Python FastAPI                        │
-│           Pydantic 数据校验 · /api/v1/*          │
-│           端口 8000                              │
-├──────────────────────────────────────────────────┤
-│  规划引擎  C++17 (pybind11) ← 自动切换 → Python │
-│           多目标图搜索算法                        │
-├──────────────────────────────────────────────────┤
-│  数据层    MySQL 8.0 · Mock 适配器               │
-│           795 条种子数据（360 航班 + 435 火车）   │
-│           覆盖 3 天班期                           │
-├──────────────────────────────────────────────────┤
-│  AI 助手   DeepSeek 大模型 · 多轮对话会话        │
-│           自然语言 → 结构化搜索参数               │
-└──────────────────────────────────────────────────┘
+
+## 快速开始
+
+```powershell
+git clone <repo-url>
+cd layover-lens
+docker compose up --build -d backend frontend
 ```
 
-## 核心功能
+访问地址：
 
-- **多目标路线搜索** — 支持价格优先、时间优先、少换乘、综合推荐四种优化策略，每条路线附带评分
-- **多模式混合换乘** — 一趟行程可同时包含航班和火车（如：北京飞上海，再乘高铁到杭州）
-- **丰富筛选条件** — 出发/到达时间段、价格上限、时长上限、交通工具偏好、排除城市、指定中转城市、是否允许过夜
-- **AI 自然语言搜索** — 输入"帮我找下周五北京到昆明最便宜的路线"，AI 通过多轮对话自动补齐搜索参数并确认执行
-- **平台标签** — 每条行程段标注数据来源（铁路12306、携程、去哪儿、飞猪）
-- **收藏功能** — 收藏心仪路线，本地持久化保存，支持一键取消
-- **深色模式与国际化** — 完整中英文界面，CSS 变量驱动的主题系统
-
-## 快速开始（Docker）
-
-```bash
-git clone <仓库地址> && cd layover-lens
-docker compose up --build
-# 前端：http://localhost:3000    后端文档：http://localhost:8000/docs
-```
-
-Docker Compose 一键启动三个服务：
-- **frontend** — Nginx 静态文件服务 + API 反向代理
-- **backend** — FastAPI 应用 + C++ 路线规划引擎
-- **mysql** — MySQL 8.0，自动导入 40 个城市、80+ 站点、795 条班次数据
+- 前端：`http://localhost:3000`
+- 后端 Swagger：`http://localhost:8000/docs`
+- 后端健康检查：`http://localhost:8000/health`
 
 常用命令：
-```bash
-docker compose up --build          # 完整重建
-docker compose restart backend     # 单独重启后端
-docker compose down -v && docker compose up --build  # 清空数据库重建
+
+```powershell
+docker compose ps
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose exec -T backend python -m pytest tests/ -q
 ```
+
+不要随意运行 `docker compose down -v`，它会删除数据库 volume。
 
 ## 本地开发
 
-### 前端
-
-```bash
-cd frontend
-npm install
-npm run dev          # Vite 开发服务器，端口 3000，/api 请求代理到 localhost:8000
-npm run test         # Vitest 单元测试
-npm run build        # TypeScript 类型检查 + 生产构建
-```
-
-后端跑在 Docker 而前端本地开发时：
-```bash
-VITE_PROXY_TARGET=http://localhost:8000 npm run dev
-```
-
 ### 后端
 
-```bash
+本地后端环境统一使用 Python 3.10.11 生成的虚拟环境：
+
+```powershell
 cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+.\.venv310\Scripts\python.exe -m pytest tests -q
+.\.venv310\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
-需要更高规划性能时，编译 C++ 规划引擎：
-```bash
-cd backend/planner && mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build .
+修改 C++ planner 后需要重新构建：
+
+```powershell
+cd backend\planner
+cmake -S . -B build
+cmake --build build --config Release
 ```
 
-### 后端测试
+### 前端
 
-```bash
-docker compose exec backend python -m pytest tests/ -v
+```powershell
+cd frontend
+npm install
+npm run dev
+npm run test
+npm run build
 ```
 
-## API 端点
+## 历史 CSV 与路线训练
 
-| 方法 | 路径 | 说明 |
-|--------|------|-------------|
-| `POST` | `/api/v1/search` | 多目标路线搜索 |
-| `GET` | `/api/v1/cities` | 城市关键词联想搜索 |
-| `POST` | `/api/v1/search/ai/sessions` | 创建 AI 搜索会话 |
-| `POST` | `/api/v1/search/ai/sessions/{id}/messages` | 在 AI 会话中发送消息 |
-| `POST` | `/api/v1/search/ai/sessions/{id}/confirm` | 确认并执行 AI 搜索 |
-| `GET` | `/api/v1/search/ai/sessions/{id}` | 获取 AI 会话状态 |
-| `POST` | `/api/v1/auth/login` | 用户登录 |
-| `POST` | `/api/v1/auth/register` | 用户注册 |
-| `GET` | `/api/v1/user/profile` | 获取当前用户信息 |
-| `PATCH` | `/api/v1/user/profile` | 更新用户信息 |
-| `GET` | `/api/v1/user/preferences` | 获取用户偏好设置 |
-| `PUT` | `/api/v1/user/preferences` | 更新用户偏好设置 |
-| `POST` | `/api/v1/favorites` | 收藏路线 |
-| `GET` | `/api/v1/favorites` | 查看收藏列表 |
-| `DELETE` | `/api/v1/favorites/{id}` | 取消收藏 |
-| `GET` | `/health` | 服务健康检查与后端信息 |
+训练数据目录位于：
 
-完整接口文档：[description/api-interface-list.md](description/api-interface-list.md)
+```text
+backend/data/route_training/
+  raw_csv/       # 放原始 CSV，已被 gitignore 忽略
+  artifacts/     # 离线聚合图谱产物
+  models/        # 线性排序模型权重
+```
 
-## 配置项
+初始化与构建：
 
-关键环境变量（通过 `docker-compose.yml` 或 `.env` 设置）：
+```powershell
+cd backend
+.\.venv310\Scripts\python.exe -m app.cli.route_training init
+.\.venv310\Scripts\python.exe -m app.cli.route_training status
+.\.venv310\Scripts\python.exe -m app.cli.route_training build
+```
+
+当没有 CSV 或离线产物时，系统继续使用 mock 数据。当存在可用 artifact 和模型权重时，搜索会切换到 historical dataset，并在响应中返回 `route_dataset_mode`、`route_dataset_version` 和 `route_model_version`。
+
+## API 清单
+
+完整接口清单见 [description/api-interface-list.md](./description/api-interface-list.md)。
+
+常用入口：
+
+| Method | Path | 说明 |
+| --- | --- | --- |
+| `GET` | `/health` | 服务、数据源、Planner、AI 和 POI 能力摘要 |
+| `GET` | `/api/v1/cities` | 城市列表和关键词过滤 |
+| `POST` | `/api/v1/search` | 路线策略搜索 |
+| `POST` | `/api/v1/search/feedback` | 路线评价，支持匿名提交 |
+| `POST` | `/api/v1/search/ai/sessions/stream` | 创建 AI 会话并流式返回 |
+| `POST` | `/api/v1/search/ai/sessions/{session_id}/confirm/stream` | 确认 AI 搜索并流式返回结果 |
+| `POST` | `/api/v1/auth/register` | 注册并设置会话 Cookie |
+| `POST` | `/api/v1/auth/login` | 登录，可能返回 TOTP challenge |
+| `GET` | `/api/v1/user/profile` | 当前用户资料 |
+| `GET` | `/api/v1/user/devices` | 登录设备列表 |
+
+## 关键环境变量
 
 | 变量 | 默认值 | 说明 |
-|----------|---------|-------------|
-| `DATA_SOURCE` | `mock` | 数据源：`mock`（MySQL 优先 + 内存回退）或 `mysql` |
-| `ROUTE_PLANNER_BACKEND` | `auto` | 规划引擎：`python`、`cpp` 或 `auto`（自动检测） |
-| `DEEPSEEK_API_KEY` | — | DeepSeek API 密钥，AI 搜索功能必需 |
-| `DEEPSEEK_MODEL` | `deepseek-v4-flash` | AI 搜索使用的模型 |
-| `AI_MODEL_PROVIDER` | `deepseek` | Agent 模型提供方：`deepseek`、`openai_compatible` 或 `legacy` |
-| `AI_MODEL_API_KEY` | — | `openai_compatible` 提供方的 API 密钥 |
-| `AI_MODEL_BASE_URL` | — | `openai_compatible` 提供方的基础地址，不包含 `/chat/completions` |
-| `AI_MODEL_NAME` | — | `openai_compatible` 提供方的模型名称 |
-| `AI_MODEL_SUPPORTS_JSON_MODE` | `true` | 是否向兼容提供方发送 `response_format: {"type":"json_object"}` |
-| `AI_AGENT_TURN_MODE` | `single` | LangGraph Agent 模型调用模式：`dual` 或 `single` |
-| `AI_CHAT_RETENTION_DAYS` | `30` | AI 对话默认保留天数；用户偏好优先，`-1` 表示不自动清理 |
-| `AI_AGENT_MAX_SESSIONS` | `20` | 每个用户最多保留的 AI 会话数量 |
-| `AI_AGENT_STORAGE_SOFT_LIMIT_MB` | `0` | AI checkpoint 存储软上限；`0` 表示关闭软上限检查 |
-| `AI_AGENT_STORAGE_DISABLE_NEW_WRITES` | `false` | 为 `true` 时暂停新建/继续 AI 对话，仍允许读取和删除 |
-| `AI_AGENT_CLEANUP_INTERVAL_MINUTES` | `60` | AI 过期会话与 checkpoint 删除队列的后台清理间隔 |
-| `AI_AGENT_TOOLS_ENABLED` | `true` | 是否允许 Agent 调用后端白名单只读工具 |
-| `AI_AGENT_WEATHER_PROVIDER` | `open_meteo` | 天气工具提供方，当前支持 Open-Meteo |
-| `AI_AGENT_WEATHER_TIMEOUT_SECONDS` | `8` | 天气接口请求超时时间 |
-| `AI_AGENT_TOOL_TIMEOUT_SECONDS` | `8` | 单次 Agent 工具执行超时时间 |
-| `AMAP_WEB_SERVICE_KEY` | — | 高德 Web 服务 Key，仅后端使用 |
-| `BAIDU_MAP_WEB_SERVICE_AK` | — | 百度地图 Web 服务 AK，仅后端使用 |
-| `AI_AGENT_POI_ENABLED` | `true` | 是否启用真实 POI 查询工具 |
-| `AI_AGENT_POI_PRIMARY_PROVIDER` | `amap` | POI 主 provider：`amap` 或 `baidu` |
-| `AI_AGENT_POI_DUAL_VERIFY_ENABLED` | `false` | 是否启用高德/百度双源交叉验证 |
-| `AI_AGENT_POI_CACHE_TTL_DAYS` | `30` | POI 缓存和轻量 RAG chunk 有效天数 |
-| `AI_AGENT_POI_MAX_RESULTS` | `5` | 每次地点推荐最多返回 POI 数 |
-| `AI_AGENT_POI_AMAP_MONTHLY_LIMIT` | `5000` | 高德基础搜索个人认证月配额默认值 |
-| `AI_AGENT_POI_AMAP_QPS_LIMIT` | `3` | 高德基础搜索个人认证 QPS 默认值 |
-| `AI_AGENT_POI_BAIDU_PLACE_DAILY_LIMIT` | `100` | 百度 Web API 地点检索个人日配额默认值 |
-| `AI_AGENT_POI_BAIDU_PLACE_QPS_LIMIT` | `3` | 百度 Web API 地点检索 QPS 默认值 |
-| `LANGGRAPH_CHECKPOINT_DATABASE_URL` | — | LangGraph PostgreSQL Checkpoint 连接字符串 |
-| `LANGGRAPH_AES_KEY` | — | Checkpoint AES 加密密钥，必须为 16、24 或 32 字节 |
-| `VITE_AI_SEARCH_ENABLED` | `false` | 构建前端时是否开放 AI 搜索入口 |
-| `DATABASE_URL` | — | MySQL 连接字符串 |
-| `CORS_ORIGINS` | `["http://localhost:3000", ...]` | 允许的跨域来源 |
-| `MAX_ROUTES` | `8` | 每次搜索最多返回的路线数 |
-| `DEFAULT_MAX_TRANSFERS` | `2` | 默认最大换乘次数 |
+| --- | --- | --- |
+| `APP_ENV` | `development` | `development` 或 `production` |
+| `DATABASE_URL` | compose 中配置 | MySQL 连接字符串 |
+| `ROUTE_PLANNER_BACKEND` | `auto` | `cpp`、`python` 或 `auto`；默认搜索应使用 C++ 策略 planner |
+| `ROUTE_TRAINING_DATA_DIR` | `backend/data/route_training` | CSV、artifact 和模型权重目录 |
+| `ROUTE_DATASET_MODE` | `auto` | `auto`、`mock` 或 `historical` |
+| `SESSION_COOKIE_SECURE` | 本地为 `false` | 生产 HTTPS 下应为 `true` |
+| `VITE_AI_SEARCH_ENABLED` | `false` | 前端是否开放 AI 搜索入口 |
+| `AI_MODEL_PROVIDER` | `deepseek` | Agent 模型提供方 |
+| `DEEPSEEK_API_KEY` | 空 | DeepSeek API Key |
+| `AI_AGENT_TURN_MODE` | `single` | Agent 单调用/双调用模式 |
+| `LANGGRAPH_CHECKPOINT_DATABASE_URL` | compose 中配置 | LangGraph PostgreSQL checkpoint |
+| `AMAP_WEB_SERVICE_KEY` | 空 | 高德 Web 服务 Key |
+| `BAIDU_MAP_WEB_SERVICE_AK` | 空 | 百度地图 Web 服务 AK |
+| `AI_AGENT_POI_DUAL_VERIFY_ENABLED` | `false` | 是否启用高德/百度双源 POI 验证 |
 
-完整配置项参见 [backend/app/config.py](backend/app/config.py)。
+更多配置以 [backend/app/config.py](./backend/app/config.py) 为准。
 
 ## 项目结构
 
-```
-layover-lens/
-├── frontend/             React 18 + TypeScript + Vite
-│   ├── src/
-│   │   ├── components/   搜索页、AI搜索页、收藏页、设置面板、顶栏、页脚
-│   │   ├── context/      主题、国际化、收藏夹 状态管理
-│   │   ├── locales/      中英文翻译词典
-│   │   ├── services/     Axios API 请求封装
-│   │   ├── styles/       设计变量、样式重置、深色模式
-│   │   └── types/        与后端 Schema 对应的 TypeScript 类型
-│   └── nginx.conf        生产环境静态文件服务 + API 代理
-├── backend/              Python FastAPI
-│   ├── app/
-│   │   ├── routers/      搜索、城市、认证、用户、预订 路由
-│   │   ├── services/     搜索服务、AI 智能体、路线规划器
-│   │   ├── data_source/  可插拔数据源适配器（MySQL、内存）
-│   │   ├── config.py     pydantic-settings 配置管理
-│   │   └── schemas.py    API 请求/响应 Pydantic 模型
-│   ├── planner/          C++17 路线规划引擎（pybind11 绑定）
-│   └── tests/            后端测试
-├── database/             MySQL 建表 + 种子数据
-├── description/          项目文档
-└── docker-compose.yml    三服务容器编排
+```text
+frontend/                 React + TypeScript + Vite
+backend/app/              FastAPI routers, services, schemas, agents
+backend/planner/          C++17 planner and pybind11 bindings
+backend/data/route_training/
+database/init.sql         MySQL 初始化脚本
+description/              设计与接口文档
+docker-compose.yml        本地编排
 ```
 
-## 技术栈
+## 测试
 
-**前端：** React 18 · TypeScript · Vite · motion（framer-motion）· Axios · Vitest  
-**后端：** Python · FastAPI · Pydantic · MySQL Connector · DeepSeek API · pybind11  
-**数据库：** MySQL 8.0 · 40 个城市 · 80+ 站点 · 795 条班次种子数据  
-**基础设施：** Docker Compose · Nginx · CMake（C++ 规划引擎编译）
+```powershell
+cd backend
+.\.venv310\Scripts\python.exe -m pytest tests -q
 
-## 许可证
+cd ..\frontend
+npm run test
+npm run build
 
-本项目仅用于演示目的。
+cd ..
+docker compose up --build -d backend frontend
+docker compose exec -T backend python -m pytest tests/ -q
+```
+
+## 数据与免责声明
+
+当前路线策略仍基于 mock 数据或离线 CSV 聚合估算，不代表实时票价、实时余票或可购买班次。外部平台按钮只作为分段查询入口，最终价格、余票、退改签和购票规则以外部平台为准。
+
+## License
+
+本项目目前用于学习、演示和内测验证。
