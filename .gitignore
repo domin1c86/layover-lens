@@ -3,6 +3,8 @@ CLAUDE - COPY.md
 AGENTS.md
 DESIGN.md
 verify-anim.spec.js
+init_new.sql
+routes_data.sql
 
 .claude/
 .superpowers/
