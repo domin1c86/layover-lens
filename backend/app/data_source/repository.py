@@ -406,3 +406,19 @@ class MySQLCatalogRepository(CatalogRepository):
             password=unquote(parsed.password or ""),
             database=database,
         )
+
+
+class HistoricalArtifactCatalogRepository(CatalogRepository):
+    def __init__(self, artifact_path) -> None:
+        self._artifact_path = artifact_path
+
+    def load_catalog(self) -> CatalogSnapshot:
+        from app.services.route_training import load_historical_catalog
+
+        try:
+            return load_historical_catalog(self._artifact_path)
+        except (OSError, ValueError, KeyError) as exc:
+            raise RepositoryUnavailableError(f"Historical artifact is invalid: {exc}") from exc
+
+    def describe(self) -> str:
+        return "historical_artifact"

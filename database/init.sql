@@ -225,6 +225,57 @@ CREATE TABLE IF NOT EXISTS security_audit_logs (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='security audit logs';
 
+CREATE TABLE IF NOT EXISTS route_feedback (
+    id VARCHAR(80) PRIMARY KEY,
+    user_id VARCHAR(64) NULL,
+    search_id VARCHAR(120) NOT NULL,
+    recommendation_id VARCHAR(255) NOT NULL,
+    action VARCHAR(40) NOT NULL,
+    anonymous_session_id VARCHAR(120) NOT NULL DEFAULT '',
+    source VARCHAR(20) NOT NULL DEFAULT 'search',
+    feedback_context VARCHAR(40) NOT NULL DEFAULT 'route_card',
+    ratings_json JSON NOT NULL,
+    selected_recommendation_ids_json JSON NOT NULL,
+    clicked_provider VARCHAR(20) NOT NULL DEFAULT '',
+    clicked_segment_index INT NULL,
+    comment TEXT NULL,
+    search_request_json JSON NOT NULL,
+    recommendation_json JSON NOT NULL,
+    model_version VARCHAR(120) NOT NULL DEFAULT '',
+    dataset_version VARCHAR(120) NOT NULL DEFAULT '',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_route_feedback_user_time (user_id, created_at),
+    INDEX idx_route_feedback_model (model_version, dataset_version),
+    CONSTRAINT fk_route_feedback_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='route recommendation feedback';
+
+CREATE TABLE IF NOT EXISTS route_feedback_annotations (
+    feedback_id VARCHAR(80) PRIMARY KEY,
+    annotator_user_id VARCHAR(64) NOT NULL,
+    label VARCHAR(40) NOT NULL,
+    issues_json JSON NOT NULL,
+    notes TEXT NULL,
+    annotated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_route_feedback_annotation_feedback
+        FOREIGN KEY (feedback_id) REFERENCES route_feedback(id) ON DELETE CASCADE,
+    CONSTRAINT fk_route_feedback_annotation_user
+        FOREIGN KEY (annotator_user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='manual route feedback annotations';
+
+CREATE TABLE IF NOT EXISTS route_training_builds (
+    dataset_version VARCHAR(120) PRIMARY KEY,
+    model_version VARCHAR(120) NOT NULL,
+    status VARCHAR(40) NOT NULL,
+    artifact_path VARCHAR(500) NOT NULL,
+    model_path VARCHAR(500) NOT NULL,
+    source_rows INT NOT NULL DEFAULT 0,
+    accepted_rows INT NOT NULL DEFAULT 0,
+    rejected_rows INT NOT NULL DEFAULT 0,
+    edge_count INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_route_training_model (model_version)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='route training build metadata';
+
 CREATE TABLE IF NOT EXISTS user_totp_settings (
     user_id VARCHAR(40) PRIMARY KEY,
     secret_encrypted TEXT NOT NULL,

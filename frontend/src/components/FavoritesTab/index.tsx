@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { RoutePlan } from '../../types';
+import type { FavoriteItem, RoutePlan, RouteRecommendation } from '../../types';
 import ResultList from '../SearchTab/ResultList';
 import { useLocale } from '../../context/LocaleContext';
 import { useFavoritesContext } from '../../context/FavoritesContext';
@@ -626,7 +626,9 @@ export default function FavoritesTab() {
   // Snapshot favorites on mount so unfavoriting a card doesn't immediately
   // remove it from view — the card stays until the user leaves and revisits
   // the tab (or refreshes the page).
-  const [displayedFavorites, setDisplayedFavorites] = useState<RoutePlan[]>(() => favorites);
+  const [displayedFavorites, setDisplayedFavorites] = useState<FavoriteItem[]>(() => favorites);
+  const displayedRecommendations = displayedFavorites.filter((item): item is RouteRecommendation => 'segments' in item);
+  const displayedRoutes = displayedFavorites.filter((item): item is RoutePlan => 'legs' in item);
 
   useEffect(() => {
     // Re-sync on mount only — not on favorites change.
@@ -640,7 +642,8 @@ export default function FavoritesTab() {
         <h2 className="results-header">{t('favorites.title')}</h2>
         {displayedFavorites.length > 0 ? (
           <ResultList
-            routes={displayedFavorites}
+            routes={displayedRoutes}
+            recommendations={displayedRecommendations}
             loading={false}
             error=""
             searched={true}

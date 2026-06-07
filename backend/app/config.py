@@ -21,6 +21,11 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
     )
     data_source: str = Field(default="mock", alias="DATA_SOURCE")
+    route_training_data_dir: str = Field(
+        default="backend/data/route_training",
+        alias="ROUTE_TRAINING_DATA_DIR",
+    )
+    route_dataset_mode: str = Field(default="auto", alias="ROUTE_DATASET_MODE")
     route_planner_backend: str = Field(default="auto", alias="ROUTE_PLANNER_BACKEND")
     cors_origins: list[str] = Field(
         default=["http://localhost:3000", "http://127.0.0.1:3000"],

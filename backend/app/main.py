@@ -8,6 +8,7 @@ from app.agents.search_agent import get_search_agent_service
 from app.config import settings
 from app.routers import auth, bookings, cities, search, user
 from app.services import get_search_service, get_user_service
+from app.services.route_training import select_route_dataset
 
 if settings.app_env.lower() == "production":
     if "*" in settings.cors_origins or not settings.cors_origins:
@@ -64,10 +65,18 @@ def root() -> dict[str, str]:
 def health_check() -> dict[str, str | int | bool]:
     search_service = get_search_service()
     agent_service = get_search_agent_service()
+    route_dataset = select_route_dataset()
     return {
         "status": "ok",
         "data_source": search_service.describe_source(),
         "planner_backend": search_service.describe_planner(),
+        "route_strategy_enabled": True,
+        "route_strategy_backend": search_service.describe_route_strategy(),
+        "segment_provider": search_service.describe_segment_provider(),
+        "route_dataset_mode": route_dataset.mode,
+        "route_dataset_version": route_dataset.dataset_version,
+        "route_model_version": search_service.describe_route_model(),
+        "route_dataset_warning": route_dataset.warning,
         "ai_search_backend": agent_service.describe_backend(),
         "ai_streaming": "reply",
         "ai_tools_enabled": settings.ai_agent_tools_enabled,

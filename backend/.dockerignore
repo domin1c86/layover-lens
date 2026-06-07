@@ -1,5 +1,7 @@
 .venv
 .venv39
+.venv310
 __pycache__
 .pytest_cache
 .git
+planner/build

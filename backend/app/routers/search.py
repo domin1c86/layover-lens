@@ -16,6 +16,10 @@ from app.schemas import (
     AISessionListResponse,
     AISessionSummary,
     AISessionUpdateRequest,
+    RouteFeedbackAnnotationRequest,
+    RouteFeedbackAnnotationResponse,
+    RouteFeedbackCreateRequest,
+    RouteFeedbackResponse,
     SearchRequest,
     SearchResponse,
     SuccessResponse,
@@ -30,11 +34,17 @@ from app.agents.search_agent import (
     new_ai_session_id,
 )
 from app.services.summarizer import summarize_message
+from app.services.route_feedback import (
+    RouteFeedbackError,
+    RouteFeedbackService,
+    get_route_feedback_service,
+)
 from app.services.user_service import (
     AuthenticatedUser,
     UserService,
     UserServiceError,
     get_current_user,
+    get_optional_user,
     get_user_service,
     require_csrf,
 )
@@ -159,6 +169,49 @@ def search_routes(
         return search_service.search(request)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/search/feedback",
+    response_model=RouteFeedbackResponse,
+    dependencies=[Depends(require_csrf)],
+)
+def create_route_feedback(
+    request: RouteFeedbackCreateRequest,
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+    feedback_service: RouteFeedbackService = Depends(get_route_feedback_service),
+) -> RouteFeedbackResponse:
+    try:
+        user_id = current_user.user.id if current_user is not None else None
+        return feedback_service.create_feedback(user_id, request)
+    except RouteFeedbackError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.put(
+    "/search/feedback/{feedback_id}/annotation",
+    response_model=RouteFeedbackAnnotationResponse,
+    dependencies=[Depends(require_csrf)],
+)
+def annotate_route_feedback(
+    feedback_id: str,
+    request: RouteFeedbackAnnotationRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    feedback_service: RouteFeedbackService = Depends(get_route_feedback_service),
+) -> RouteFeedbackAnnotationResponse:
+    try:
+        return feedback_service.annotate_feedback(feedback_id, current_user.user.id, request)
+    except RouteFeedbackError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.get("/search/feedback/annotated")
+def export_route_feedback_annotations(
+    _: AuthenticatedUser = Depends(get_current_user),
+    feedback_service: RouteFeedbackService = Depends(get_route_feedback_service),
+) -> dict:
+    samples = feedback_service.export_annotated_samples()
+    return {"samples": samples, "total": len(samples)}
 
 
 def _create_ai_session(

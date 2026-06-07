@@ -26,6 +26,7 @@ from app.services.route_planner import (
     PlanningTimeWindow,
     create_route_planner,
 )
+from app.services.route_strategy import RouteStrategyService
 
 
 @dataclass
@@ -43,11 +44,46 @@ class SearchService:
     def __init__(self, ai_chat_client: Optional[AIChatClient] = None) -> None:
         self._data_source = create_data_source()
         self._planner = create_route_planner(settings.route_planner_backend)
+        self._strategy_service = RouteStrategyService()
         self._ai_chat_client = ai_chat_client or DeepSeekChatClient()
         self._ai_sessions: dict[str, AISearchSession] = {}
         self._ai_session_lock = Lock()
 
     def search(self, request: SearchRequest) -> SearchResponse:
+        catalog = self._data_source.get_catalog()
+        from_city_code = self._resolve_city_code(request.from_city, catalog.cities)
+        to_city_code = self._resolve_city_code(request.to_city, catalog.cities)
+        source_date = self._select_mock_source_date(catalog.routes, request.travel_date)
+        notice = (
+            "Mock strategy beta: recommendations are estimated route strategies, "
+            "not realtime fares, schedules, or ticket availability."
+        )
+        recommendations = self._strategy_service.recommend(
+            request=request,
+            catalog=catalog,
+            from_city_code=from_city_code,
+            to_city_code=to_city_code,
+            source_date=source_date,
+            limit=settings.max_routes,
+        )
+
+        return SearchResponse(
+            search_id=f"search_{uuid4().hex[:12]}",
+            routes=[],
+            result_mode="strategy",
+            recommendations=recommendations,
+            strategy_notice=notice,
+            total_count=len(recommendations),
+            total=len(recommendations),
+            data_mode="historical" if catalog.dataset_mode == "historical" else "mock",
+            data_notice=notice,
+            mock_source_date=source_date.isoformat(),
+            route_dataset_mode=catalog.dataset_mode,
+            route_dataset_version=catalog.dataset_version,
+            route_model_version=self.describe_route_model(),
+        )
+
+    def search_legacy_detail(self, request: SearchRequest) -> SearchResponse:
         catalog = self._data_source.get_catalog()
         from_city_code = self._resolve_city_code(request.from_city, catalog.cities)
         to_city_code = self._resolve_city_code(request.to_city, catalog.cities)
@@ -126,14 +162,19 @@ class SearchService:
         return SearchResponse(
             search_id=f"search_{uuid4().hex[:12]}",
             routes=routes,
+            result_mode="legacy_detail",
+            recommendations=[],
             total_count=len(routes),
             total=len(routes),
-            data_mode="mock",
+            data_mode="historical" if catalog.dataset_mode == "historical" else "mock",
             data_notice=(
                 "Mock beta data: schedules and prices are simulated for product testing "
                 "and are not valid for booking decisions."
             ),
             mock_source_date=source_date.isoformat(),
+            route_dataset_mode=catalog.dataset_mode,
+            route_dataset_version=catalog.dataset_version,
+            route_model_version=self.describe_route_model(),
         )
 
     def list_cities(self, keyword: Optional[str] = None) -> list[City]:
@@ -152,6 +193,15 @@ class SearchService:
 
     def describe_planner(self) -> str:
         return getattr(self._planner, "backend_name", "unknown")
+
+    def describe_route_strategy(self) -> str:
+        return getattr(self._strategy_service, "backend_name", "unknown")
+
+    def describe_segment_provider(self) -> str:
+        return getattr(self._strategy_service, "segment_provider", "unknown")
+
+    def describe_route_model(self) -> str:
+        return getattr(self._strategy_service, "model_version", "builtin_default")
 
     def describe_ai_search(self) -> str:
         return type(self._ai_chat_client).__name__

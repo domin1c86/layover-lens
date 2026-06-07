@@ -1,4 +1,4 @@
-import type { RoutePlan } from '../../types';
+import type { RoutePlan, RouteRecommendation, SearchRequest } from '../../types';
 import ResultList from './ResultList';
 import { useLocale } from '../../context/LocaleContext';
 import { Icon } from '../../icons';
@@ -17,14 +17,31 @@ const RECOMMENDATIONS = [
 
 interface SearchTabProps {
   routes: RoutePlan[];
+  recommendations?: RouteRecommendation[];
   loading: boolean;
   error: string;
   searched: boolean;
   dataNotice?: string;
+  searchId?: string;
+  searchRequest?: Partial<SearchRequest>;
+  modelVersion?: string;
+  datasetVersion?: string;
   onQuickSearch: (from: string, to: string) => void;
 }
 
-export default function SearchTab({ routes, loading, error, searched, dataNotice, onQuickSearch }: SearchTabProps) {
+export default function SearchTab({
+  routes,
+  recommendations = [],
+  loading,
+  error,
+  searched,
+  dataNotice,
+  searchId,
+  searchRequest,
+  modelVersion,
+  datasetVersion,
+  onQuickSearch,
+}: SearchTabProps) {
   const { t } = useLocale();
   return (
     <div>
@@ -45,7 +62,18 @@ export default function SearchTab({ routes, loading, error, searched, dataNotice
             </div>
           )}
 
-          <ResultList routes={routes} loading={loading} error={error} searched={searched} dataNotice={dataNotice} />
+          <ResultList
+            routes={routes}
+            recommendations={recommendations}
+            loading={loading}
+            error={error}
+            searched={searched}
+            dataNotice={dataNotice}
+            searchId={searchId}
+            searchRequest={searchRequest}
+            modelVersion={modelVersion}
+            datasetVersion={datasetVersion}
+          />
 
           {!searched && !loading && (
             <div className="recommendations">

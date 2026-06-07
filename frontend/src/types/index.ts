@@ -52,6 +52,98 @@ export interface RoutePlan {
   legs: Leg[];
 }
 
+export interface SegmentAvailability {
+  from_city_code: string;
+  to_city_code: string;
+  transport_type: TransportType;
+  sample_count: number;
+  estimated_price: number;
+  estimated_duration_minutes: number;
+  service_frequency_score: number;
+  availability_score: number;
+  confidence: number;
+  data_source: string;
+}
+
+export type EstimateLevel = 'low' | 'medium' | 'high';
+export type DurationLevel = 'short' | 'medium' | 'long';
+export type FrequencyLevel = 'low' | 'medium' | 'high';
+
+export interface RecommendationSegment {
+  from_city: string;
+  to_city: string;
+  from_city_en: string;
+  to_city_en: string;
+  recommended_transport_type: TransportType;
+  available_transport_types: TransportType[];
+  estimated_price: number;
+  estimated_duration_minutes: number;
+  estimated_price_level: EstimateLevel;
+  estimated_duration_level: DurationLevel;
+  service_frequency_level: FrequencyLevel;
+  availability: SegmentAvailability;
+  data_source: string;
+}
+
+export interface RouteRecommendation {
+  id: string;
+  city_path: string[];
+  city_path_en: string[];
+  transfer_cities: string[];
+  transfer_cities_en: string[];
+  segments: RecommendationSegment[];
+  estimated_total_price: number;
+  estimated_total_duration_minutes: number;
+  estimated_price_level: EstimateLevel;
+  estimated_duration_level: DurationLevel;
+  transfer_count: number;
+  score: number;
+  confidence: number;
+  reasons: string[];
+  warnings: string[];
+  data_sources: string[];
+}
+
+export type FavoriteItem = RoutePlan | RouteRecommendation;
+
+export type TicketProvider = '12306' | 'ctrip' | 'fliggy' | 'qunar';
+
+export interface ExternalTicketLink {
+  provider: TicketProvider;
+  label: string;
+  url: string;
+}
+
+export interface RouteFeedbackRating {
+  overall: number;
+  route_reasonable: number;
+  cost_trustworthy: number;
+  transfer_clear: number;
+}
+
+export interface RouteFeedbackPayload {
+  search_id: string;
+  recommendation_id: string;
+  anonymous_session_id?: string;
+  action?: 'shown' | 'selected' | 'favorited' | 'ignored' | 'negative';
+  source: 'search' | 'ai';
+  feedback_context: 'route_card' | 'ai_experience';
+  ratings: RouteFeedbackRating;
+  selected_recommendation_ids?: string[];
+  clicked_provider?: TicketProvider;
+  clicked_segment_index?: number;
+  comment?: string;
+  search_request?: Record<string, unknown>;
+  recommendation?: Record<string, unknown>;
+  model_version?: string;
+  dataset_version?: string;
+}
+
+export interface RouteFeedbackResponse {
+  id: string;
+  created_at: string;
+}
+
 // 搜索请求
 export interface SearchRequest {
   from_city: string;
@@ -74,11 +166,17 @@ export interface SearchRequest {
 export interface SearchResponse {
   search_id?: string;
   routes: RoutePlan[];
+  result_mode?: 'strategy' | 'legacy_detail';
+  recommendations?: RouteRecommendation[];
+  strategy_notice?: string;
   total_count: number;
   total?: number;
-  data_mode?: 'mock';
+  data_mode?: 'mock' | 'historical';
   data_notice?: string;
   mock_source_date?: string;
+  route_dataset_mode?: string;
+  route_dataset_version?: string;
+  route_model_version?: string;
 }
 
 // 城市列表响应

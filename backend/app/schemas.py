@@ -74,6 +74,56 @@ class RoutePlan(BaseModel):
     tag: Optional[str] = None
 
 
+class SegmentAvailability(BaseModel):
+    from_city_code: str
+    to_city_code: str
+    transport_type: TransportType
+    sample_count: int
+    estimated_price: float
+    estimated_duration_minutes: int
+    service_frequency_score: float
+    availability_score: float
+    confidence: float
+    price_stability_score: float = 1.0
+    duration_stability_score: float = 1.0
+    data_source: str
+
+
+class RecommendationSegment(BaseModel):
+    from_city: str
+    to_city: str
+    from_city_en: str = ""
+    to_city_en: str = ""
+    recommended_transport_type: TransportType
+    available_transport_types: list[TransportType]
+    estimated_price: float
+    estimated_duration_minutes: int
+    estimated_price_level: Literal["low", "medium", "high"]
+    estimated_duration_level: Literal["short", "medium", "long"]
+    service_frequency_level: Literal["low", "medium", "high"]
+    availability: SegmentAvailability
+    data_source: str
+
+
+class RouteRecommendation(BaseModel):
+    id: str
+    city_path: list[str]
+    city_path_en: list[str]
+    transfer_cities: list[str]
+    transfer_cities_en: list[str]
+    segments: list[RecommendationSegment]
+    estimated_total_price: float
+    estimated_total_duration_minutes: int
+    estimated_price_level: Literal["low", "medium", "high"]
+    estimated_duration_level: Literal["short", "medium", "long"]
+    transfer_count: int
+    score: float
+    confidence: float
+    reasons: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    data_sources: list[str] = Field(default_factory=list)
+
+
 class SearchRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -127,11 +177,17 @@ class SearchRequest(BaseModel):
 class SearchResponse(BaseModel):
     search_id: str
     routes: list[RoutePlan]
+    result_mode: Literal["strategy", "legacy_detail"] = "strategy"
+    recommendations: list[RouteRecommendation] = Field(default_factory=list)
+    strategy_notice: Optional[str] = None
     total_count: int
     total: int
-    data_mode: Literal["mock"] = "mock"
+    data_mode: Literal["mock", "historical"] = "mock"
     data_notice: Optional[str] = None
     mock_source_date: Optional[str] = None
+    route_dataset_mode: Optional[str] = None
+    route_dataset_version: Optional[str] = None
+    route_model_version: Optional[str] = None
 
 
 class ParsedSearchRequest(BaseModel):
@@ -219,6 +275,65 @@ class SummarizeRequest(BaseModel):
 
 class SummarizeResponse(BaseModel):
     title: str
+
+
+RouteFeedbackAction = Literal["shown", "selected", "favorited", "ignored", "negative"]
+RouteFeedbackSource = Literal["search", "ai"]
+RouteFeedbackContext = Literal["route_card", "ai_experience"]
+TicketProvider = Literal["12306", "ctrip", "fliggy", "qunar"]
+RouteAnnotationLabel = Literal["good", "acceptable", "bad", "invalid"]
+RouteAnnotationIssue = Literal[
+    "too_expensive",
+    "too_slow",
+    "too_many_transfers",
+    "low_frequency",
+    "unreliable_transfer",
+    "bad_transport_mix",
+    "better_direct_available",
+]
+
+
+class RouteFeedbackRatings(BaseModel):
+    overall: int = Field(ge=1, le=5)
+    route_reasonable: int = Field(ge=1, le=5)
+    cost_trustworthy: int = Field(ge=1, le=5)
+    transfer_clear: int = Field(ge=1, le=5)
+
+
+class RouteFeedbackCreateRequest(BaseModel):
+    search_id: str = Field(min_length=1, max_length=120)
+    recommendation_id: str = Field(min_length=1, max_length=255)
+    action: RouteFeedbackAction = "shown"
+    anonymous_session_id: Optional[str] = Field(default=None, max_length=120)
+    source: RouteFeedbackSource = "search"
+    feedback_context: RouteFeedbackContext = "route_card"
+    ratings: Optional[RouteFeedbackRatings] = None
+    selected_recommendation_ids: list[str] = Field(default_factory=list)
+    clicked_provider: Optional[TicketProvider] = None
+    clicked_segment_index: Optional[int] = Field(default=None, ge=0)
+    comment: Optional[str] = Field(default=None, max_length=2000)
+    search_request: dict = Field(default_factory=dict)
+    recommendation: dict = Field(default_factory=dict)
+    model_version: Optional[str] = Field(default=None, max_length=120)
+    dataset_version: Optional[str] = Field(default=None, max_length=120)
+
+
+class RouteFeedbackResponse(BaseModel):
+    id: str
+    created_at: datetime
+
+
+class RouteFeedbackAnnotationRequest(BaseModel):
+    label: RouteAnnotationLabel
+    issues: list[RouteAnnotationIssue] = Field(default_factory=list)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class RouteFeedbackAnnotationResponse(BaseModel):
+    feedback_id: str
+    label: RouteAnnotationLabel
+    issues: list[RouteAnnotationIssue] = Field(default_factory=list)
+    annotated_at: datetime
 
 
 class UserProfile(BaseModel):

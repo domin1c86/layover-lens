@@ -24,6 +24,8 @@ import type {
   SessionDuration,
   SessionDurationUpdateResponse,
   TotpSetupResponse,
+  RouteFeedbackPayload,
+  RouteFeedbackResponse,
   UserProfile,
 } from '../types';
 import { clearAuthSession } from './authStorage';
@@ -260,6 +262,11 @@ export const authApi = {
 export const searchApi = {
   search: async (request: SearchRequest): Promise<SearchResponse> => {
     const response = await apiClient.post<SearchResponse>('/search', request);
+    return response.data;
+  },
+
+  submitRouteFeedback: async (request: RouteFeedbackPayload): Promise<RouteFeedbackResponse> => {
+    const response = await apiClient.post<RouteFeedbackResponse>('/search/feedback', request);
     return response.data;
   },
 };

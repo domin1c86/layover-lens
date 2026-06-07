@@ -46,6 +46,7 @@ function messagesFromResponse(response: AiSessionResponse): AiChatMessage[] {
     content: message.content,
     isSearchResult: Boolean(message.search_response),
     searchData: message.search_response || undefined,
+    finalRequest: message.search_response ? response.final_request || undefined : undefined,
     toolResults: message.tool_results || undefined,
   }));
 }

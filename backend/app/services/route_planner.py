@@ -444,6 +444,7 @@ class PythonRoutePlanner:
 @lru_cache
 def _load_cpp_module():
     candidate_paths = [
+        Path(__file__).resolve().parents[2] / "planner" / "build" / "Release",
         Path(__file__).resolve().parents[2] / "planner" / "build",
         Path(__file__).resolve().parents[2],
     ]

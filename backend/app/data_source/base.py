@@ -41,10 +41,30 @@ class RouteRecord:
 
 
 @dataclass(frozen=True)
+class SegmentEdgeRecord:
+    from_city_code: str
+    to_city_code: str
+    transport_type: str
+    sample_count: int
+    estimated_price: float
+    estimated_duration_minutes: int
+    service_frequency_score: float
+    availability_score: float
+    confidence: float
+    price_stability_score: float = 1.0
+    duration_stability_score: float = 1.0
+    data_source: str = "historical_csv"
+
+
+@dataclass(frozen=True)
 class CatalogSnapshot:
     cities: tuple[CityRecord, ...]
     stations: tuple[StationRecord, ...]
     routes: tuple[RouteRecord, ...]
+    segment_edges: tuple[SegmentEdgeRecord, ...] = ()
+    dataset_mode: str = "mock"
+    dataset_version: str = "mock"
+    model_version: str = "builtin_default"
 
 
 class DataSourceBase(ABC):

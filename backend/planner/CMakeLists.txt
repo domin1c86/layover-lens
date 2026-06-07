@@ -15,8 +15,14 @@ find_package(pybind11 CONFIG REQUIRED)
 pybind11_add_module(
     route_planner
     planner.cpp
+    strategy_planner.cpp
     bindings.cpp
 )
 
 target_include_directories(route_planner PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_options(route_planner PRIVATE -O3)
+target_compile_options(
+    route_planner
+    PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/O2>
+        $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-O3>
+)
