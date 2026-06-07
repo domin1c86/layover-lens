@@ -28,7 +28,7 @@ The goal is to validate the search experience, strategy algorithm, AI parameter 
 ## Architecture
 
 ```text
-React 18 + TypeScript + Vite frontend (:3000)
+React 18 + TypeScript + Vite frontend (:3200)
   -> Axios / fetch API client
   -> Nginx / Vite proxy for /api
 
@@ -62,7 +62,7 @@ docker compose up --build -d backend frontend
 
 URLs:
 
-- Frontend: `http://localhost:3000`
+- Frontend: `http://localhost:3200`
 - Backend Swagger: `http://localhost:8000/docs`
 - Backend health: `http://localhost:8000/health`
 

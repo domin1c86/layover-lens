@@ -28,7 +28,7 @@ Layover Lens 是一个用于验证“城市级交通策略推荐”的开源项�
 ## 架构概览
 
 ```text
-React 18 + TypeScript + Vite frontend (:3000)
+React 18 + TypeScript + Vite frontend (:3200)
   -> Axios / fetch API client
   -> Nginx / Vite proxy for /api
 
@@ -62,7 +62,7 @@ docker compose up --build -d backend frontend
 
 访问地址：
 
-- 前端：`http://localhost:3000`
+- 前端：`http://localhost:3200`
 - 后端 Swagger：`http://localhost:8000/docs`
 - 后端健康检查：`http://localhost:8000/health`
 
