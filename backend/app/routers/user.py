@@ -41,6 +41,7 @@ from app.services.user_service import (
     set_auth_cookies,
 )
 from app.agents.search_agent import SearchAgentService, get_search_agent_service
+from app.agents.memory import AgentMemoryService, get_agent_memory_service
 
 router = APIRouter(prefix="/user")
 
@@ -72,9 +73,11 @@ def delete_account(
     current_user: AuthenticatedUser = Depends(get_current_user),
     user_service: UserService = Depends(get_user_service),
     agent_service: SearchAgentService = Depends(get_search_agent_service),
+    memory_service: AgentMemoryService = Depends(get_agent_memory_service),
 ) -> SuccessResponse:
     try:
         ai_session_ids = user_service.list_user_ai_session_ids(current_user.user.id)
+        memory_service.clear_memories(current_user.user.id)
         user_service.delete_account(current_user.user.id, request=request)
         for session_id in ai_session_ids:
             try:

@@ -9,6 +9,7 @@ routes_data.sql
 .claude/
 .superpowers/
 .vscode/
+.VSCodeCounter/
 frontend-prototype/
 design-demo/
 docs/

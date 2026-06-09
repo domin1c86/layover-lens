@@ -62,7 +62,7 @@ def root() -> dict[str, str]:
 
 
 @app.get("/health")
-def health_check() -> dict[str, str | int | bool]:
+def health_check() -> dict[str, str | int | float | bool]:
     search_service = get_search_service()
     agent_service = get_search_agent_service()
     route_dataset = select_route_dataset()
@@ -86,6 +86,9 @@ def health_check() -> dict[str, str | int | bool]:
         "ai_storage_soft_limit_mb": settings.ai_agent_storage_soft_limit_mb,
         "ai_token_usage_tracking_enabled": settings.ai_agent_token_usage_tracking_enabled,
         "ai_cached_token_tracking_supported": True,
+        "ai_long_term_memory_enabled": settings.ai_agent_long_term_memory_enabled,
+        "ai_prompt_cache_optimization_enabled": settings.ai_agent_prompt_cache_optimization_enabled,
+        "ai_cache_quality_min_ratio": settings.ai_agent_cache_quality_min_ratio,
         "ai_poi_enabled": settings.ai_agent_poi_enabled,
         "ai_poi_primary_provider": settings.ai_agent_poi_primary_provider,
         "ai_poi_dual_verify_enabled": settings.ai_agent_poi_dual_verify_enabled,

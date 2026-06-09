@@ -19,6 +19,9 @@ class ContextBuildResult:
     conversation_summary: str = ""
     tool_results_summary: str = ""
     search_history_summary: str = ""
+    memory_summary: str = ""
+    cacheable_prefix_version: str = "agent-context-v1"
+    dynamic_context_stats: dict = field(default_factory=dict)
 
 
 class ContextBuilder:
@@ -33,6 +36,7 @@ class ContextBuilder:
         conversation_summary: str = "",
         tool_results_summary: str = "",
         search_history_summary: str = "",
+        memory_summary: str = "",
         force_compress: bool = False,
     ) -> ContextBuildResult:
         latest_message = self._safe_message(message)
@@ -43,6 +47,7 @@ class ContextBuilder:
             conversation_summary=conversation_summary,
             tool_results_summary=tool_results_summary,
             search_history_summary=search_history_summary,
+            memory_summary=memory_summary,
         )
         should_compress, reason = self._should_compress(
             force_compress=force_compress,
@@ -52,13 +57,22 @@ class ContextBuilder:
             search_history=[],
         )
         if not should_compress:
+            messages = self._summary_messages(
+                conversation_summary=conversation_summary,
+                tool_results_summary=tool_results_summary,
+                search_history_summary=search_history_summary,
+                memory_summary=memory_summary,
+            )
+            messages.extend(conversation)
             return ContextBuildResult(
-                messages=list(conversation),
+                messages=messages,
                 latest_message=latest_message,
                 estimated_input_tokens=estimated,
                 conversation_summary=conversation_summary,
                 tool_results_summary=tool_results_summary,
                 search_history_summary=search_history_summary,
+                memory_summary=memory_summary,
+                dynamic_context_stats=self._dynamic_stats(messages, [], []),
             )
 
         messages = self._compressed_messages(
@@ -66,6 +80,7 @@ class ContextBuilder:
             conversation_summary=conversation_summary,
             tool_results_summary=tool_results_summary,
             search_history_summary=search_history_summary,
+            memory_summary=memory_summary,
         )
         compressed_latest = self._compress_message(latest_message)
         compressed_estimated = self._estimate_extraction(
@@ -75,6 +90,7 @@ class ContextBuilder:
             conversation_summary="",
             tool_results_summary="",
             search_history_summary="",
+            memory_summary="",
         )
         return ContextBuildResult(
             messages=messages,
@@ -85,6 +101,8 @@ class ContextBuilder:
             conversation_summary=conversation_summary,
             tool_results_summary=tool_results_summary,
             search_history_summary=search_history_summary,
+            memory_summary=memory_summary,
+            dynamic_context_stats=self._dynamic_stats(messages, [], []),
         )
 
     def build_for_reply(
@@ -97,6 +115,7 @@ class ContextBuilder:
         conversation_summary: str = "",
         tool_results_summary: str = "",
         search_history_summary: str = "",
+        memory_summary: str = "",
         force_compress: bool = False,
     ) -> ContextBuildResult:
         tool_results = tool_results or []
@@ -110,6 +129,7 @@ class ContextBuilder:
             conversation_summary=conversation_summary,
             tool_results_summary=effective_tool_summary,
             search_history_summary=effective_search_summary,
+            memory_summary=memory_summary,
         )
         should_compress, reason = self._should_compress(
             force_compress=force_compress,
@@ -119,14 +139,23 @@ class ContextBuilder:
             search_history=search_history,
         )
         if not should_compress:
+            messages = self._summary_messages(
+                conversation_summary=conversation_summary,
+                tool_results_summary=effective_tool_summary,
+                search_history_summary=effective_search_summary,
+                memory_summary=memory_summary,
+            )
+            messages.extend(conversation)
             return ContextBuildResult(
-                messages=list(conversation),
+                messages=messages,
                 latest_message="",
                 estimated_input_tokens=estimated,
                 tool_results=list(tool_results),
                 conversation_summary=conversation_summary,
                 tool_results_summary=effective_tool_summary,
                 search_history_summary=effective_search_summary,
+                memory_summary=memory_summary,
+                dynamic_context_stats=self._dynamic_stats(messages, tool_results, search_history),
             )
 
         summarized_tools = self._summary_tool_payload(effective_tool_summary)
@@ -135,6 +164,7 @@ class ContextBuilder:
             conversation_summary=conversation_summary,
             tool_results_summary=effective_tool_summary,
             search_history_summary=effective_search_summary,
+            memory_summary=memory_summary,
         )
         compressed_estimated = self._estimate_reply(
             parsed_request=parsed_request,
@@ -143,6 +173,7 @@ class ContextBuilder:
             conversation_summary="",
             tool_results_summary="",
             search_history_summary="",
+            memory_summary="",
         )
         return ContextBuildResult(
             messages=messages,
@@ -154,6 +185,8 @@ class ContextBuilder:
             conversation_summary=conversation_summary,
             tool_results_summary=effective_tool_summary,
             search_history_summary=effective_search_summary,
+            memory_summary=memory_summary,
+            dynamic_context_stats=self._dynamic_stats(messages, summarized_tools, search_history),
         )
 
     def summarize_conversation(
@@ -267,10 +300,12 @@ class ContextBuilder:
         conversation_summary: str,
         tool_results_summary: str,
         search_history_summary: str,
+        memory_summary: str,
     ) -> int:
         return self.estimate_tokens([
             latest_message,
             json.dumps(parsed_request.model_dump(mode="json"), ensure_ascii=False),
+            memory_summary,
             conversation_summary,
             tool_results_summary,
             search_history_summary,
@@ -286,10 +321,12 @@ class ContextBuilder:
         conversation_summary: str,
         tool_results_summary: str,
         search_history_summary: str,
+        memory_summary: str,
     ) -> int:
         return self.estimate_tokens([
             json.dumps(parsed_request.model_dump(mode="json"), ensure_ascii=False),
             json.dumps(tool_results, ensure_ascii=False),
+            memory_summary,
             conversation_summary,
             tool_results_summary,
             search_history_summary,
@@ -328,11 +365,13 @@ class ContextBuilder:
         conversation_summary: str,
         tool_results_summary: str,
         search_history_summary: str,
+        memory_summary: str,
     ) -> list[AIChatMessage]:
         messages = self._summary_messages(
             conversation_summary=conversation_summary,
             tool_results_summary=tool_results_summary,
             search_history_summary=search_history_summary,
+            memory_summary=memory_summary,
         )
         recent_limit = max(1, settings.ai_agent_context_recent_turns_after_summary)
         messages.extend(conversation[-recent_limit:])
@@ -344,8 +383,11 @@ class ContextBuilder:
         conversation_summary: str,
         tool_results_summary: str,
         search_history_summary: str,
+        memory_summary: str,
     ) -> list[AIChatMessage]:
         sections = []
+        if memory_summary:
+            sections.append(f"Long-term memory summary:\n{memory_summary}")
         if conversation_summary:
             sections.append(f"Conversation summary:\n{conversation_summary}")
         if tool_results_summary:
@@ -401,3 +443,15 @@ class ContextBuilder:
             return len(json.dumps(value, ensure_ascii=False))
         except TypeError:
             return len(str(value))
+
+    @staticmethod
+    def _dynamic_stats(
+        messages: list[AIChatMessage],
+        tool_results: list[dict],
+        search_history: list[dict],
+    ) -> dict:
+        return {
+            "message_count": len(messages),
+            "tool_result_count": len(tool_results),
+            "search_history_count": len(search_history),
+        }

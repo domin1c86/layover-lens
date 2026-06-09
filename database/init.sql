@@ -180,6 +180,20 @@ CREATE TABLE IF NOT EXISTS ai_agent_token_usage (
     FOREIGN KEY (session_id) REFERENCES ai_search_sessions(session_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS ai_agent_user_memory (
+    user_id VARCHAR(40) NOT NULL,
+    memory_key VARCHAR(120) NOT NULL,
+    memory_value_json TEXT NOT NULL,
+    confidence DECIMAL(5,4) NOT NULL DEFAULT 0.6000,
+    evidence_count INT NOT NULL DEFAULT 1,
+    source VARCHAR(40) NOT NULL DEFAULT 'agent_rule',
+    last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, memory_key),
+    INDEX idx_ai_memory_user_updated (user_id, updated_at),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS ai_checkpoint_deletions (
     session_id VARCHAR(80) PRIMARY KEY,
     user_id VARCHAR(40) NOT NULL,

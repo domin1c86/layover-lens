@@ -16,6 +16,7 @@ from psycopg.rows import dict_row
 from app.agents.ai_agent import AIClientError
 from app.config import settings
 from app.agents.context import ContextBuilder
+from app.agents.memory import AgentMemoryService, get_agent_memory_service
 from app.schemas import (
     AIChatMessage,
     AISearchResponse,
@@ -130,6 +131,9 @@ class AgentState(TypedDict, total=False):
     conversation_summary: str
     tool_results_summary: str
     search_history_summary: str
+    memory_summary: str
+    memory_updates: list[dict]
+    cacheable_prefix_version: str
     context_overflow_count: int
     last_summary_turn: int
 
@@ -140,10 +144,12 @@ class SearchAgentService:
         *,
         search_service: Optional[SearchService] = None,
         model: Optional[SearchAgentModel] = None,
+        memory_service: Optional[AgentMemoryService] = None,
         checkpointer=None,
     ) -> None:
         self._search_service = search_service or get_search_service()
         self._model = model
+        self._memory_service = memory_service or get_agent_memory_service()
         self._context_builder = ContextBuilder()
         if settings.ai_agent_turn_mode not in {"dual", "single"}:
             raise RuntimeError("AI_AGENT_TURN_MODE must be dual or single.")
@@ -244,6 +250,9 @@ class SearchAgentService:
             "conversation_summary": "",
             "tool_results_summary": "",
             "search_history_summary": "",
+            "memory_summary": self._memory_service.build_summary(user_id, language=language),
+            "memory_updates": [],
+            "cacheable_prefix_version": "agent-context-v1",
             "context_overflow_count": 0,
             "last_summary_turn": 0,
         }
@@ -262,6 +271,7 @@ class SearchAgentService:
     ) -> AISearchResponse:
         with self._session_lock(session_id):
             self._raise_if_blocked(session_id)
+            memory_summary = self._memory_summary_for_session(session_id, language)
             result = self._graph.invoke(
                 {
                     "user_message": message,
@@ -269,6 +279,7 @@ class SearchAgentService:
                     "action": "message",
                     "stream_reply": stream_reply,
                     "request_id": request_id or f"req_{uuid4().hex}",
+                    "memory_summary": memory_summary,
                 },
                 self._thread_config(session_id),
                 durability="sync",
@@ -286,6 +297,7 @@ class SearchAgentService:
     ) -> AISearchResponse:
         with self._session_lock(session_id):
             self._raise_if_blocked(session_id)
+            memory_summary = self._memory_summary_for_session(session_id, language)
             result = self._graph.invoke(
                 {
                     "user_message": "",
@@ -293,6 +305,7 @@ class SearchAgentService:
                     "action": "confirm" if confirmed else "reject",
                     "stream_reply": stream_reply,
                     "request_id": request_id or f"req_{uuid4().hex}",
+                    "memory_summary": memory_summary,
                 },
                 self._thread_config(session_id),
                 durability="sync",
@@ -320,6 +333,11 @@ class SearchAgentService:
         if self._model is None:
             self._model = get_search_agent_model()
         return self._model
+
+    def _memory_summary_for_session(self, session_id: str, language: str) -> str:
+        snapshot = self._graph.get_state(self._thread_config(session_id))
+        user_id = str((snapshot.values or {}).get("user_id") or "")
+        return self._memory_service.build_summary(user_id, language=language) if user_id else ""
 
     def _record_usage(self, state: AgentState, call_type: str, usage: Optional[AgentModelUsage]) -> None:
         try:
@@ -377,6 +395,29 @@ class SearchAgentService:
         if search_history is not None:
             updates["search_history_summary"] = self._context_builder.summarize_search_history(search_history)
         return updates
+
+    def _memory_updates_for_turn(
+        self,
+        state: AgentState,
+        *,
+        parsed: ParsedSearchRequest,
+        message: str = "",
+        confirmed_search: bool = False,
+    ) -> dict:
+        user_id = str(state.get("user_id") or "")
+        if not user_id:
+            return {}
+        memories = self._memory_service.update_from_turn(
+            user_id=user_id,
+            parsed_request=parsed,
+            message=message,
+            confirmed_search=confirmed_search,
+        )
+        language = str(state.get("language") or "zh")
+        return {
+            "memory_summary": self._memory_service.build_summary(user_id, language=language),
+            "memory_updates": [item.model_dump(mode="json") for item in memories],
+        }
 
     def _raise_if_blocked(self, session_id: str) -> None:
         snapshot = self._graph.get_state(self._thread_config(session_id))
@@ -497,6 +538,7 @@ class SearchAgentService:
                 conversation_summary=str(state.get("conversation_summary") or ""),
                 tool_results_summary=str(state.get("tool_results_summary") or ""),
                 search_history_summary=str(state.get("search_history_summary") or ""),
+                memory_summary=str(state.get("memory_summary") or ""),
                 force_compress=(
                     settings.ai_agent_compress_on_scope_violation
                     and state.get("scope") in {"off_topic_hard", "adversarial"}
@@ -520,6 +562,7 @@ class SearchAgentService:
                     conversation_summary=str(state.get("conversation_summary") or ""),
                     tool_results_summary=str(state.get("tool_results_summary") or ""),
                     search_history_summary=str(state.get("search_history_summary") or ""),
+                    memory_summary=str(state.get("memory_summary") or ""),
                     force_compress=True,
                 )
                 try:
@@ -599,6 +642,11 @@ class SearchAgentService:
             conversation=conversation,
             parsed=parsed,
         )
+        memory_updates = self._memory_updates_for_turn(
+            state,
+            parsed=parsed,
+            message=message,
+        )
         return {
             "conversation": conversation,
             "parsed_request": parsed.model_dump(mode="json"),
@@ -635,7 +683,9 @@ class SearchAgentService:
             ),
             "search_response": None if action == "message" else state.get("search_response"),
             "search_executed": False if action == "message" else bool(state.get("search_executed")),
+            "cacheable_prefix_version": context.cacheable_prefix_version if "context" in locals() else state.get("cacheable_prefix_version", "agent-context-v1"),
             **summary_updates,
+            **memory_updates,
         }
 
     @staticmethod
@@ -700,6 +750,11 @@ class SearchAgentService:
             parsed=parsed,
             search_history=history,
         )
+        memory_updates = self._memory_updates_for_turn(
+            state,
+            parsed=parsed,
+            confirmed_search=True,
+        )
         return {
             "conversation": conversation,
             "assistant_message": message,
@@ -710,6 +765,7 @@ class SearchAgentService:
             "summary": self._search_service._build_ai_summary(parsed, []),
             "pending_reply": False,
             **summary_updates,
+            **memory_updates,
         }
 
     def _respond_node(self, state: AgentState) -> dict:
@@ -756,6 +812,7 @@ class SearchAgentService:
                     conversation_summary=str(state.get("conversation_summary") or ""),
                     tool_results_summary=str(state.get("tool_results_summary") or ""),
                     search_history_summary=str(state.get("search_history_summary") or ""),
+                    memory_summary=str(state.get("memory_summary") or ""),
                 )
                 try:
                     reply_result = self._get_model().reply(
@@ -782,6 +839,7 @@ class SearchAgentService:
                             conversation_summary=str(state.get("conversation_summary") or ""),
                             tool_results_summary=str(state.get("tool_results_summary") or ""),
                             search_history_summary=str(state.get("search_history_summary") or ""),
+                            memory_summary=str(state.get("memory_summary") or ""),
                             force_compress=True,
                         )
                         try:
@@ -834,6 +892,8 @@ class SearchAgentService:
                 "reply_estimated_input_tokens": reply_context.estimated_input_tokens,
                 "reply_compressed": reply_context.compressed,
                 "reply_compression_reason": reply_context.compression_reason,
+                "cacheable_prefix_version": reply_context.cacheable_prefix_version,
+                "dynamic_context_stats": reply_context.dynamic_context_stats,
             }
         return {
             "conversation": conversation,
@@ -842,6 +902,7 @@ class SearchAgentService:
             "summary": self._search_service._build_ai_summary(parsed, missing),
             "pending_reply": False,
             "context_overflow_count": overflow_count if "overflow_count" in locals() else int(state.get("context_overflow_count") or 0),
+            "cacheable_prefix_version": reply_context.cacheable_prefix_version if "reply_context" in locals() else state.get("cacheable_prefix_version", "agent-context-v1"),
             "context_stats": context_stats,
             **summary_updates,
         }
@@ -902,6 +963,7 @@ class SearchAgentService:
             conversation_summary=str(state.get("conversation_summary") or ""),
             tool_results_summary=str(state.get("tool_results_summary") or ""),
             search_history_summary=str(state.get("search_history_summary") or ""),
+            memory_summary=str(state.get("memory_summary") or ""),
         )
         try:
             try:
@@ -928,6 +990,7 @@ class SearchAgentService:
                         conversation_summary=str(state.get("conversation_summary") or ""),
                         tool_results_summary=str(state.get("tool_results_summary") or ""),
                         search_history_summary=str(state.get("search_history_summary") or ""),
+                        memory_summary=str(state.get("memory_summary") or ""),
                         force_compress=True,
                     )
                     try:

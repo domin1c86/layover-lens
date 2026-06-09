@@ -16,6 +16,7 @@ from app.schemas import (
     AISessionListResponse,
     AISessionSummary,
     AISessionUpdateRequest,
+    AgentMemoryListResponse,
     RouteFeedbackAnnotationRequest,
     RouteFeedbackAnnotationResponse,
     RouteFeedbackCreateRequest,
@@ -33,6 +34,7 @@ from app.agents.search_agent import (
     get_search_agent_service,
     new_ai_session_id,
 )
+from app.agents.memory import AgentMemoryService, get_agent_memory_service
 from app.services.summarizer import summarize_message
 from app.services.route_feedback import (
     RouteFeedbackError,
@@ -297,6 +299,34 @@ def list_ai_search_sessions(
 ) -> AISessionListResponse:
     _cleanup_user_checkpoints(current_user.user.id, agent_service, user_service)
     return AISessionListResponse(sessions=user_service.list_ai_sessions(current_user.user.id))
+
+
+@router.get("/search/ai/memory", response_model=AgentMemoryListResponse)
+def list_ai_agent_memory(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    memory_service: AgentMemoryService = Depends(get_agent_memory_service),
+) -> AgentMemoryListResponse:
+    memories = memory_service.list_memories(current_user.user.id)
+    return AgentMemoryListResponse(memories=memories, total=len(memories))
+
+
+@router.delete("/search/ai/memory/{memory_key}", response_model=SuccessResponse, dependencies=[Depends(require_csrf)])
+def delete_ai_agent_memory(
+    memory_key: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    memory_service: AgentMemoryService = Depends(get_agent_memory_service),
+) -> SuccessResponse:
+    memory_service.delete_memory(current_user.user.id, memory_key)
+    return SuccessResponse(success=True)
+
+
+@router.delete("/search/ai/memory", response_model=SuccessResponse, dependencies=[Depends(require_csrf)])
+def clear_ai_agent_memory(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    memory_service: AgentMemoryService = Depends(get_agent_memory_service),
+) -> SuccessResponse:
+    memory_service.clear_memories(current_user.user.id)
+    return SuccessResponse(success=True)
 
 
 @router.get("/search/ai/sessions/{session_id}", response_model=AISearchResponse)

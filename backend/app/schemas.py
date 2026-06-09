@@ -269,6 +269,21 @@ class AISearchResponse(BaseModel):
     pending_reply: bool = False
 
 
+class AgentMemoryEntry(BaseModel):
+    memory_key: str
+    memory_value: dict = Field(default_factory=dict)
+    confidence: float = Field(ge=0.0, le=1.0)
+    evidence_count: int = 0
+    source: str = "agent_rule"
+    last_seen_at: datetime
+    updated_at: datetime
+
+
+class AgentMemoryListResponse(BaseModel):
+    memories: list[AgentMemoryEntry]
+    total: int
+
+
 class SummarizeRequest(BaseModel):
     message: str
     language: str = "zh"

@@ -6,7 +6,7 @@ services:
       args:
         VITE_AI_SEARCH_ENABLED: ${VITE_AI_SEARCH_ENABLED:-false}
     ports:
-      - "3200:3000"
+      - "3000:3000"
     depends_on:
       backend:
         condition: service_healthy
@@ -27,7 +27,7 @@ services:
     environment:
       - DATABASE_URL=mysql+mysqlconnector://root:devpassword@mysql:3306/layover_lens
       - APP_ENV=development
-      - CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000","http://localhost:3200","http://127.0.0.1:3200"]
+      - CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
       - SESSION_COOKIE_SECRET=${SESSION_COOKIE_SECRET:-dev-session-cookie-secret}
       - CSRF_SECRET=${CSRF_SECRET:-dev-csrf-secret}
       - TOTP_ENCRYPTION_SECRET=${TOTP_ENCRYPTION_SECRET:-dev-totp-encryption-secret}
