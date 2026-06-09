@@ -28,7 +28,6 @@ dist/
 build/
 test-results/
 test/
-tests/
 backend/data/route_training/raw_csv/*
 backend/data/route_training/artifacts/*
 backend/data/route_training/models/*
