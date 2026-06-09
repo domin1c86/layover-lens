@@ -224,7 +224,8 @@ export type AiSessionStatus =
   | 'executing'
   | 'results_available'
   | 'failed'
-  | 'completed';
+  | 'completed'
+  | 'blocked';
 
 // AI 会话响应
 export interface AiSessionResponse {

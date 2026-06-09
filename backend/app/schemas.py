@@ -229,6 +229,7 @@ class AISearchSessionStatus(str, Enum):
     RESULTS_AVAILABLE = "results_available"
     FAILED = "failed"
     COMPLETED = "completed"
+    BLOCKED = "blocked"
 
 
 class AISearchSessionCreateRequest(BaseModel):

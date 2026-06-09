@@ -337,6 +337,19 @@
   transform: translateY(-1px);
 }
 
+.ai-search__scope-hint,
+.ai-search__blocked-note {
+  max-width: 768px;
+  margin: 0 auto 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ai-search__blocked-note {
+  color: var(--danger);
+}
+
 .ai-search__input-box {
   max-width: 768px;
   margin: 0 auto;

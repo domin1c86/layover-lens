@@ -196,6 +196,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
 
   const handleSend = useCallback(async (text: string) => {
     if (!AI_SEARCH_ENABLED) return;
+    if (activeSession.status === 'blocked') return;
     if (!isLoggedIn) {
       setError(t('aiChat.loginRequired'));
       return;
@@ -338,7 +339,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
         status={activeSession.status}
         onConfirm={handleConfirm}
         onReject={handleReject}
-        showConfirm={activeSession.readyForConfirmation}
+        showConfirm={activeSession.readyForConfirmation && activeSession.status !== 'blocked'}
         disabled={!AI_SEARCH_ENABLED}
         error={error}
       />

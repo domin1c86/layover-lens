@@ -71,6 +71,8 @@ def _run_owned_session(
         return agent_service.get_session(session_id)
     user_service.check_ai_storage_available()
     current = agent_service.get_session(session_id)
+    if current.status.value == "blocked":
+        raise UserServiceError("AI session is blocked.", 409)
     if sum(1 for item in current.conversation if item.role == "user") >= settings.ai_agent_max_session_turns:
         raise UserServiceError("AI session turn limit reached.", 409)
     user_service.check_ai_agent_quota(user_id)
@@ -249,6 +251,8 @@ def _create_ai_session(
         return response
     except UserServiceError as exc:
         _raise_user_error(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except AIClientError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

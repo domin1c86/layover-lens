@@ -58,6 +58,7 @@ export default function AiChatArea({
   messages,
   onSend,
   loading,
+  status,
   onConfirm,
   onReject,
   showConfirm,
@@ -74,6 +75,8 @@ export default function AiChatArea({
   const [aiFeedbackOpen, setAiFeedbackOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { lang, t } = useLocale();
+  const isSessionBlocked = status === 'blocked';
+  const inputDisabled = loading || disabled || isSessionBlocked;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -81,7 +84,7 @@ export default function AiChatArea({
 
   const handleSend = () => {
     const text = input.trim();
-    if (!text || loading || disabled) return;
+    if (!text || inputDisabled) return;
     onSend(text);
     setInput('');
   };
@@ -102,7 +105,7 @@ export default function AiChatArea({
             <h2>{t('aiChat.maintenanceTitle')}</h2>
             <p>{t('aiChat.maintenanceSubtitle')}</p>
           </div>
-        ) : messages.length === 0 ? (
+        ) : messages.length === 0 && !isSessionBlocked ? (
           <div className="ai-search__welcome">
             <h2>{t('aiChat.welcomeTitle')}</h2>
             <p>{t('aiChat.welcomeSubtitle')}</p>
@@ -219,16 +222,22 @@ export default function AiChatArea({
             {t('aiChat.satisfactionPrompt')}
           </button>
         ) : null}
+        {!disabled && !isSessionBlocked ? (
+          <div className="ai-search__scope-hint">{t('aiChat.scopeHint')}</div>
+        ) : null}
+        {isSessionBlocked ? (
+          <div className="ai-search__blocked-note">{t('aiChat.blockedNotice')}</div>
+        ) : null}
         <div className="ai-search__input-box">
           <input
             type="text"
-            placeholder={t('aiChat.placeholder')}
+            placeholder={isSessionBlocked ? t('aiChat.blockedPlaceholder') : t('aiChat.placeholder')}
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={loading || disabled}
+            disabled={inputDisabled}
           />
-          <button className="ai-search__send" onClick={handleSend} disabled={loading || disabled}>
+          <button className="ai-search__send" onClick={handleSend} disabled={inputDisabled}>
             <Icon name="actions.send" />
           </button>
         </div>
