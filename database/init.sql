@@ -156,6 +156,30 @@ CREATE TABLE IF NOT EXISTS ai_agent_requests (
     FOREIGN KEY (session_id) REFERENCES ai_search_sessions(session_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS ai_agent_token_usage (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(40) NOT NULL,
+    session_id VARCHAR(80) NOT NULL,
+    request_id VARCHAR(100) NOT NULL,
+    call_type VARCHAR(40) NOT NULL,
+    provider VARCHAR(80) NOT NULL,
+    model VARCHAR(120) NOT NULL,
+    input_tokens INT NULL,
+    output_tokens INT NULL,
+    total_tokens INT NULL,
+    cached_input_tokens INT NULL,
+    uncached_input_tokens INT NULL,
+    cache_hit_ratio DECIMAL(10,6) NULL,
+    raw_usage_json TEXT NOT NULL,
+    usage_unavailable BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_ai_token_user_time (user_id, created_at),
+    INDEX idx_ai_token_provider_time (provider, model, created_at),
+    INDEX idx_ai_token_session (session_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (session_id) REFERENCES ai_search_sessions(session_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS ai_checkpoint_deletions (
     session_id VARCHAR(80) PRIMARY KEY,
     user_id VARCHAR(40) NOT NULL,

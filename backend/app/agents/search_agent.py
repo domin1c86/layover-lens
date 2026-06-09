@@ -13,7 +13,9 @@ from langgraph.checkpoint.serde.encrypted import EncryptedSerializer
 from langgraph.graph import END, START, StateGraph
 from psycopg.rows import dict_row
 
+from app.agents.ai_agent import AIClientError
 from app.config import settings
+from app.agents.context import ContextBuilder
 from app.schemas import (
     AIChatMessage,
     AISearchResponse,
@@ -23,6 +25,7 @@ from app.schemas import (
 )
 from app.agents.search_agent_models import (
     AgentExtraction,
+    AgentModelUsage,
     AgentScope,
     SearchAgentModel,
     get_search_agent_model,
@@ -30,6 +33,7 @@ from app.agents.search_agent_models import (
     validate_search_agent_model_config,
 )
 from app.agents.tools import AgentToolError, execute_agent_tool
+from app.agents.token_usage import get_token_usage_recorder
 from app.services.search_service import SearchService, get_search_service
 
 
@@ -95,6 +99,7 @@ class AgentState(TypedDict, total=False):
     language: str
     user_message: str
     action: str
+    request_id: str
     conversation: list[dict]
     parsed_request: dict
     answered_fields: list[str]
@@ -121,6 +126,12 @@ class AgentState(TypedDict, total=False):
     blocked_reason: str
     conversation_goal: str
     scope_guard_route: str
+    context_stats: dict
+    conversation_summary: str
+    tool_results_summary: str
+    search_history_summary: str
+    context_overflow_count: int
+    last_summary_turn: int
 
 
 class SearchAgentService:
@@ -133,6 +144,7 @@ class SearchAgentService:
     ) -> None:
         self._search_service = search_service or get_search_service()
         self._model = model
+        self._context_builder = ContextBuilder()
         if settings.ai_agent_turn_mode not in {"dual", "single"}:
             raise RuntimeError("AI_AGENT_TURN_MODE must be dual or single.")
         validate_search_agent_model_config()
@@ -203,6 +215,7 @@ class SearchAgentService:
         message: str,
         language: str,
         stream_reply: bool = False,
+        request_id: Optional[str] = None,
     ) -> AISearchResponse:
         initial: AgentState = {
             "session_id": session_id,
@@ -210,6 +223,7 @@ class SearchAgentService:
             "language": language,
             "user_message": message,
             "action": "message",
+            "request_id": request_id or f"req_{uuid4().hex}",
             "conversation": [],
             "parsed_request": ParsedSearchRequest().model_dump(mode="json"),
             "answered_fields": [],
@@ -226,6 +240,12 @@ class SearchAgentService:
             "adversarial_count": 0,
             "blocked_reason": "",
             "conversation_goal": "",
+            "context_stats": {},
+            "conversation_summary": "",
+            "tool_results_summary": "",
+            "search_history_summary": "",
+            "context_overflow_count": 0,
+            "last_summary_turn": 0,
         }
         with self._session_lock(session_id):
             result = self._graph.invoke(initial, self._thread_config(session_id), durability="sync")
@@ -238,11 +258,18 @@ class SearchAgentService:
         message: str,
         language: str,
         stream_reply: bool = False,
+        request_id: Optional[str] = None,
     ) -> AISearchResponse:
         with self._session_lock(session_id):
             self._raise_if_blocked(session_id)
             result = self._graph.invoke(
-                {"user_message": message, "language": language, "action": "message", "stream_reply": stream_reply},
+                {
+                    "user_message": message,
+                    "language": language,
+                    "action": "message",
+                    "stream_reply": stream_reply,
+                    "request_id": request_id or f"req_{uuid4().hex}",
+                },
                 self._thread_config(session_id),
                 durability="sync",
             )
@@ -255,6 +282,7 @@ class SearchAgentService:
         confirmed: bool,
         language: str,
         stream_reply: bool = False,
+        request_id: Optional[str] = None,
     ) -> AISearchResponse:
         with self._session_lock(session_id):
             self._raise_if_blocked(session_id)
@@ -264,6 +292,7 @@ class SearchAgentService:
                     "language": language,
                     "action": "confirm" if confirmed else "reject",
                     "stream_reply": stream_reply,
+                    "request_id": request_id or f"req_{uuid4().hex}",
                 },
                 self._thread_config(session_id),
                 durability="sync",
@@ -291,6 +320,63 @@ class SearchAgentService:
         if self._model is None:
             self._model = get_search_agent_model()
         return self._model
+
+    def _record_usage(self, state: AgentState, call_type: str, usage: Optional[AgentModelUsage]) -> None:
+        try:
+            get_token_usage_recorder().record(
+                user_id=str(state.get("user_id") or ""),
+                session_id=str(state.get("session_id") or ""),
+                request_id=str(state.get("request_id") or f"req_{uuid4().hex}"),
+                call_type=call_type,
+                usage=usage,
+            )
+        except Exception:
+            return
+
+    def _stream_usage_unavailable(self) -> AgentModelUsage:
+        model = self._get_model()
+        provider = str(getattr(model, "provider_name", selected_agent_model_provider()))
+        model_name = settings.deepseek_model if provider == "deepseek" else settings.ai_model_name or provider
+        return AgentModelUsage(provider=provider, model=model_name, usage_unavailable=True)
+
+    @staticmethod
+    def _is_context_length_error(exc: Exception) -> bool:
+        message = str(exc).lower()
+        return any(term in message for term in ("context length", "context window", "maximum context", "token limit"))
+
+    @staticmethod
+    def _context_overflow_message(language: str) -> str:
+        if language == "en":
+            return (
+                "This message or conversation is too long for the model context. "
+                "Please split your travel need into a shorter message and send it again."
+            )
+        return "这段消息或当前会话内容过长，已经超过模型可安全处理的上下文。请把出行需求拆成更短的一段后再发送。"
+
+    def _context_summary_updates(
+        self,
+        state: AgentState,
+        *,
+        conversation: Optional[list[AIChatMessage]] = None,
+        parsed: Optional[ParsedSearchRequest] = None,
+        tool_results: Optional[list[dict]] = None,
+        search_history: Optional[list[dict]] = None,
+        force_conversation_summary: bool = False,
+    ) -> dict:
+        updates: dict = {}
+        parsed = parsed or ParsedSearchRequest.model_validate(state.get("parsed_request") or {})
+        if conversation is not None and self._context_builder.should_refresh_conversation_summary(
+            conversation,
+            existing_summary=str(state.get("conversation_summary") or ""),
+            force=force_conversation_summary,
+        ):
+            updates["conversation_summary"] = self._context_builder.summarize_conversation(conversation, parsed)
+            updates["last_summary_turn"] = len(conversation)
+        if tool_results is not None:
+            updates["tool_results_summary"] = self._context_builder.summarize_tool_results(tool_results)
+        if search_history is not None:
+            updates["search_history_summary"] = self._context_builder.summarize_search_history(search_history)
+        return updates
 
     def _raise_if_blocked(self, session_id: str) -> None:
         snapshot = self._graph.get_state(self._thread_config(session_id))
@@ -404,13 +490,78 @@ class SearchAgentService:
         else:
             catalog = self._search_service._data_source.get_catalog()
             city_catalog = ", ".join(f"{city.name}({city.code}/{city.name_en})" for city in catalog.cities)
-            extraction = self._get_model().extract(
+            context = self._context_builder.build_for_extraction(
                 message=message,
-                language=state.get("language", "zh"),
                 parsed_request=parsed,
                 conversation=conversation,
-                city_catalog=city_catalog,
+                conversation_summary=str(state.get("conversation_summary") or ""),
+                tool_results_summary=str(state.get("tool_results_summary") or ""),
+                search_history_summary=str(state.get("search_history_summary") or ""),
+                force_compress=(
+                    settings.ai_agent_compress_on_scope_violation
+                    and state.get("scope") in {"off_topic_hard", "adversarial"}
+                ),
             )
+            try:
+                extraction_result = self._get_model().extract(
+                    message=context.latest_message,
+                    language=state.get("language", "zh"),
+                    parsed_request=parsed,
+                    conversation=context.messages,
+                    city_catalog=city_catalog,
+                )
+            except AIClientError as exc:
+                if not self._is_context_length_error(exc) or context.compressed:
+                    raise
+                context = self._context_builder.build_for_extraction(
+                    message=message,
+                    parsed_request=parsed,
+                    conversation=conversation,
+                    conversation_summary=str(state.get("conversation_summary") or ""),
+                    tool_results_summary=str(state.get("tool_results_summary") or ""),
+                    search_history_summary=str(state.get("search_history_summary") or ""),
+                    force_compress=True,
+                )
+                try:
+                    extraction_result = self._get_model().extract(
+                        message=context.latest_message,
+                        language=state.get("language", "zh"),
+                        parsed_request=parsed,
+                        conversation=context.messages,
+                        city_catalog=city_catalog,
+                    )
+                except AIClientError as retry_exc:
+                    if not self._is_context_length_error(retry_exc):
+                        raise
+                    conversation = [AIChatMessage.model_validate(item) for item in self._append_user_message(
+                        [item.model_dump(mode="json") for item in conversation],
+                        message,
+                    )]
+                    summary_updates = self._context_summary_updates(
+                        state,
+                        conversation=conversation,
+                        parsed=parsed,
+                        force_conversation_summary=True,
+                    )
+                    overflow_count = int(state.get("context_overflow_count") or 0) + 1
+                    return {
+                        "conversation": conversation,
+                        "assistant_message": self._context_overflow_message(state.get("language", "zh")),
+                        "intent": "context_overflow",
+                        "tool_requests": [],
+                        "tool_results": [],
+                        "pending_reply": False,
+                        "context_overflow_count": overflow_count,
+                        "context_stats": {
+                            "estimated_input_tokens": context.estimated_input_tokens,
+                            "compressed": True,
+                            "compression_reason": "context_length_retry_failed",
+                        },
+                        "status": AISearchSessionStatus.COLLECTING_REQUIRED.value,
+                        **summary_updates,
+                    }
+            self._record_usage(state, "extract", extraction_result.usage)
+            extraction = extraction_result.value
             intent = extraction.intent
         scope = extraction.scope
         scope_confidence = extraction.scope_confidence
@@ -443,6 +594,11 @@ class SearchAgentService:
             (field for field in OPTIONAL_FIELD_ORDER if field not in answered and field not in skipped),
             None,
         ) if ready else None
+        summary_updates = self._context_summary_updates(
+            state,
+            conversation=conversation,
+            parsed=parsed,
+        )
         return {
             "conversation": conversation,
             "parsed_request": parsed.model_dump(mode="json"),
@@ -466,6 +622,11 @@ class SearchAgentService:
             "adversarial_count": adversarial_count,
             "blocked_reason": extraction.refusal_reason or extraction.scope_reason if blocked else "",
             "conversation_goal": extraction.conversation_goal,
+            "context_stats": {
+                "estimated_input_tokens": context.estimated_input_tokens if "context" in locals() else None,
+                "compressed": context.compressed if "context" in locals() else False,
+                "compression_reason": context.compression_reason if "context" in locals() else "",
+            },
             "status": (
                 AISearchSessionStatus.BLOCKED.value
                 if blocked else
@@ -474,6 +635,7 @@ class SearchAgentService:
             ),
             "search_response": None if action == "message" else state.get("search_response"),
             "search_executed": False if action == "message" else bool(state.get("search_executed")),
+            **summary_updates,
         }
 
     @staticmethod
@@ -508,7 +670,11 @@ class SearchAgentService:
                     "content": str(exc),
                     "data": {},
                 })
-        return {"tool_results": results, "tool_requests": []}
+        return {
+            "tool_results": results,
+            "tool_requests": [],
+            "tool_results_summary": self._context_builder.summarize_tool_results(results),
+        }
 
     def _search_node(self, state: AgentState) -> dict:
         parsed = ParsedSearchRequest.model_validate(state.get("parsed_request") or {})
@@ -528,6 +694,12 @@ class SearchAgentService:
         )
         history = list(state.get("search_history") or [])
         history.append(response.model_dump(mode="json"))
+        summary_updates = self._context_summary_updates(
+            state,
+            conversation=[AIChatMessage.model_validate(item) for item in conversation],
+            parsed=parsed,
+            search_history=history,
+        )
         return {
             "conversation": conversation,
             "assistant_message": message,
@@ -537,6 +709,7 @@ class SearchAgentService:
             "status": AISearchSessionStatus.RESULTS_AVAILABLE.value,
             "summary": self._search_service._build_ai_summary(parsed, []),
             "pending_reply": False,
+            **summary_updates,
         }
 
     def _respond_node(self, state: AgentState) -> dict:
@@ -549,6 +722,8 @@ class SearchAgentService:
             return self._blocked_node(state)
         if scope in {"off_topic_hard", "adversarial", "off_topic_soft", "destination_discovery", "travel_context"}:
             message = self._scope_response(scope, language)
+        elif state.get("intent") == "context_overflow":
+            message = state.get("assistant_message", "") or self._context_overflow_message(language)
         elif state.get("intent") == "reject_search":
             message = (
                 "\u597d\u7684\uff0c\u6211\u4eec\u7ee7\u7eed\u8c03\u6574\u6761\u4ef6\u3002\u4f60\u53ef\u4ee5\u544a\u8bc9\u6211\u60f3\u4fee\u6539\u7684\u5185\u5bb9\u3002"
@@ -569,15 +744,68 @@ class SearchAgentService:
                     "summary": self._search_service._build_ai_summary(parsed, missing),
                 }
             if not message or settings.ai_agent_turn_mode == "dual":
-                message = self._get_model().reply(
-                    language=language,
+                conversation_for_reply = [
+                    AIChatMessage.model_validate(item)
+                    for item in state.get("conversation", [])
+                ]
+                reply_context = self._context_builder.build_for_reply(
                     parsed_request=parsed,
-                    missing_fields=missing,
-                    next_question_field=state.get("next_question_field"),
-                    ready_for_confirmation=ready,
-                    conversation=[AIChatMessage.model_validate(item) for item in state.get("conversation", [])],
+                    conversation=conversation_for_reply,
                     tool_results=state.get("tool_results") or [],
+                    search_history=state.get("search_history") or [],
+                    conversation_summary=str(state.get("conversation_summary") or ""),
+                    tool_results_summary=str(state.get("tool_results_summary") or ""),
+                    search_history_summary=str(state.get("search_history_summary") or ""),
                 )
+                try:
+                    reply_result = self._get_model().reply(
+                        language=language,
+                        parsed_request=parsed,
+                        missing_fields=missing,
+                        next_question_field=state.get("next_question_field"),
+                        ready_for_confirmation=ready,
+                        conversation=reply_context.messages,
+                        tool_results=reply_context.tool_results,
+                    )
+                except AIClientError as exc:
+                    if not self._is_context_length_error(exc):
+                        raise
+                    if reply_context.compressed:
+                        message = self._context_overflow_message(language)
+                        overflow_count = int(state.get("context_overflow_count") or 0) + 1
+                    else:
+                        reply_context = self._context_builder.build_for_reply(
+                            parsed_request=parsed,
+                            conversation=conversation_for_reply,
+                            tool_results=state.get("tool_results") or [],
+                            search_history=state.get("search_history") or [],
+                            conversation_summary=str(state.get("conversation_summary") or ""),
+                            tool_results_summary=str(state.get("tool_results_summary") or ""),
+                            search_history_summary=str(state.get("search_history_summary") or ""),
+                            force_compress=True,
+                        )
+                        try:
+                            reply_result = self._get_model().reply(
+                                language=language,
+                                parsed_request=parsed,
+                                missing_fields=missing,
+                                next_question_field=state.get("next_question_field"),
+                                ready_for_confirmation=ready,
+                                conversation=reply_context.messages,
+                                tool_results=reply_context.tool_results,
+                            )
+                            self._record_usage(state, "reply", reply_result.usage)
+                            message = reply_result.value
+                            overflow_count = int(state.get("context_overflow_count") or 0)
+                        except AIClientError as retry_exc:
+                            if not self._is_context_length_error(retry_exc):
+                                raise
+                            message = self._context_overflow_message(language)
+                            overflow_count = int(state.get("context_overflow_count") or 0) + 1
+                else:
+                    self._record_usage(state, "reply", reply_result.usage)
+                    message = reply_result.value
+                    overflow_count = int(state.get("context_overflow_count") or 0)
         conversation = list(state.get("conversation") or [])
         conversation.append(
             AIChatMessage(
@@ -590,15 +818,32 @@ class SearchAgentService:
             AISearchSessionStatus.BLOCKED.value
             if state.get("status") == AISearchSessionStatus.BLOCKED.value else
             AISearchSessionStatus.COLLECTING_REQUIRED.value
-            if missing
-            else AISearchSessionStatus.AWAITING_CONFIRMATION.value
+                if missing
+                else AISearchSessionStatus.AWAITING_CONFIRMATION.value
         )
+        summary_updates = self._context_summary_updates(
+            state,
+            conversation=[AIChatMessage.model_validate(item) for item in conversation],
+            parsed=parsed,
+            tool_results=state.get("tool_results") or [],
+        )
+        context_stats = dict(state.get("context_stats") or {})
+        if "reply_context" in locals():
+            context_stats = {
+                **context_stats,
+                "reply_estimated_input_tokens": reply_context.estimated_input_tokens,
+                "reply_compressed": reply_context.compressed,
+                "reply_compression_reason": reply_context.compression_reason,
+            }
         return {
             "conversation": conversation,
             "assistant_message": message,
             "status": status,
             "summary": self._search_service._build_ai_summary(parsed, missing),
             "pending_reply": False,
+            "context_overflow_count": overflow_count if "overflow_count" in locals() else int(state.get("context_overflow_count") or 0),
+            "context_stats": context_stats,
+            **summary_updates,
         }
 
     @staticmethod
@@ -642,15 +887,67 @@ class SearchAgentService:
         }
 
     def stream_reply_chunks(self, response: AISearchResponse, *, language: str = "zh") -> Iterator[str]:
-        yield from self._get_model().stream_reply(
-            language=language,
-            parsed_request=response.parsed_request,
-            missing_fields=response.missing_fields,
-            next_question_field=response.next_question_field,
-            ready_for_confirmation=response.ready_for_confirmation,
-            conversation=response.conversation,
-            tool_results=[item.model_dump(mode="json") for item in response.tool_results],
+        snapshot = self._graph.get_state(self._thread_config(response.session_id))
+        state = dict(snapshot.values or {})
+        parsed = ParsedSearchRequest.model_validate(state.get("parsed_request") or response.parsed_request.model_dump(mode="json"))
+        conversation = [
+            AIChatMessage.model_validate(item)
+            for item in state.get("conversation", [item.model_dump(mode="json") for item in response.conversation])
+        ]
+        reply_context = self._context_builder.build_for_reply(
+            parsed_request=parsed,
+            conversation=conversation,
+            tool_results=state.get("tool_results") or [item.model_dump(mode="json") for item in response.tool_results],
+            search_history=state.get("search_history") or [],
+            conversation_summary=str(state.get("conversation_summary") or ""),
+            tool_results_summary=str(state.get("tool_results_summary") or ""),
+            search_history_summary=str(state.get("search_history_summary") or ""),
         )
+        try:
+            try:
+                yield from self._get_model().stream_reply(
+                    language=language,
+                    parsed_request=parsed,
+                    missing_fields=response.missing_fields,
+                    next_question_field=response.next_question_field,
+                    ready_for_confirmation=response.ready_for_confirmation,
+                    conversation=reply_context.messages,
+                    tool_results=reply_context.tool_results,
+                )
+            except AIClientError as exc:
+                if not self._is_context_length_error(exc):
+                    raise
+                if reply_context.compressed:
+                    yield self._context_overflow_message(language)
+                else:
+                    retry_context = self._context_builder.build_for_reply(
+                        parsed_request=parsed,
+                        conversation=conversation,
+                        tool_results=state.get("tool_results") or [item.model_dump(mode="json") for item in response.tool_results],
+                        search_history=state.get("search_history") or [],
+                        conversation_summary=str(state.get("conversation_summary") or ""),
+                        tool_results_summary=str(state.get("tool_results_summary") or ""),
+                        search_history_summary=str(state.get("search_history_summary") or ""),
+                        force_compress=True,
+                    )
+                    try:
+                        yield from self._get_model().stream_reply(
+                            language=language,
+                            parsed_request=parsed,
+                            missing_fields=response.missing_fields,
+                            next_question_field=response.next_question_field,
+                            ready_for_confirmation=response.ready_for_confirmation,
+                            conversation=retry_context.messages,
+                            tool_results=retry_context.tool_results,
+                        )
+                    except AIClientError as retry_exc:
+                        if not self._is_context_length_error(retry_exc):
+                            raise
+                        yield self._context_overflow_message(language)
+        finally:
+            latest = self._graph.get_state(self._thread_config(response.session_id))
+            if latest.values:
+                self._record_usage(latest.values, "stream_reply", self._stream_usage_unavailable())
 
     def complete_streaming_reply(self, session_id: str, message: str) -> AISearchResponse:
         with self._session_lock(session_id):
@@ -666,6 +963,13 @@ class SearchAgentService:
                     tool_results=state.get("tool_results") or [],
                 ).model_dump(mode="json")
             )
+            parsed = ParsedSearchRequest.model_validate(state.get("parsed_request") or {})
+            summary_updates = self._context_summary_updates(
+                state,
+                conversation=[AIChatMessage.model_validate(item) for item in conversation],
+                parsed=parsed,
+                tool_results=state.get("tool_results") or [],
+            )
             self._graph.update_state(
                 self._thread_config(session_id),
                 {
@@ -673,6 +977,7 @@ class SearchAgentService:
                     "assistant_message": message,
                     "pending_reply": False,
                     "stream_reply": False,
+                    **summary_updates,
                 },
             )
         return self.get_session(session_id)

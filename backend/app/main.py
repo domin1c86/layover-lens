@@ -84,6 +84,8 @@ def health_check() -> dict[str, str | int | bool]:
         "ai_agent_max_sessions": settings.ai_agent_max_sessions,
         "ai_storage_guard_disabled_writes": settings.ai_agent_storage_disable_new_writes,
         "ai_storage_soft_limit_mb": settings.ai_agent_storage_soft_limit_mb,
+        "ai_token_usage_tracking_enabled": settings.ai_agent_token_usage_tracking_enabled,
+        "ai_cached_token_tracking_supported": True,
         "ai_poi_enabled": settings.ai_agent_poi_enabled,
         "ai_poi_primary_provider": settings.ai_agent_poi_primary_provider,
         "ai_poi_dual_verify_enabled": settings.ai_agent_poi_dual_verify_enabled,

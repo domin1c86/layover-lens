@@ -230,12 +230,14 @@ def _create_ai_session(
         user_service.check_ai_session_capacity(current_user.user.id)
         user_service.check_ai_agent_quota(current_user.user.id)
         session_id = new_ai_session_id()
+        request_id = request.request_id or f"req_{uuid4().hex}"
         response = agent_service.create_session(
             session_id=session_id,
             user_id=current_user.user.id,
             message=request.message,
             language=request.language or "zh",
             stream_reply=stream_reply,
+            request_id=request_id,
         )
         try:
             user_service.save_ai_session(
@@ -247,7 +249,7 @@ def _create_ai_session(
             agent_service.delete_session(session_id)
             raise
         if request.request_id:
-            user_service.reserve_ai_request(current_user.user.id, session_id, request.request_id)
+            user_service.reserve_ai_request(current_user.user.id, session_id, request_id)
         return response
     except UserServiceError as exc:
         _raise_user_error(exc)
@@ -323,15 +325,17 @@ def _append_ai_message(
     stream_reply: bool = False,
 ) -> AISearchResponse:
     try:
+        request_id = request.request_id or f"req_{uuid4().hex}"
         return _run_owned_session(
             user_id=current_user.user.id,
             session_id=session_id,
-            request_id=request.request_id or f"req_{uuid4().hex}",
+            request_id=request_id,
             run=lambda: agent_service.append_message(
                 session_id,
                 message=request.message,
                 language=request.language or "zh",
                 stream_reply=stream_reply,
+                request_id=request_id,
             ),
             agent_service=agent_service,
             user_service=user_service,
@@ -391,15 +395,17 @@ def _confirm_ai_session(
     stream_reply: bool = False,
 ) -> AISearchResponse:
     try:
+        request_id = request.request_id or f"req_{uuid4().hex}"
         return _run_owned_session(
             user_id=current_user.user.id,
             session_id=session_id,
-            request_id=request.request_id or f"req_{uuid4().hex}",
+            request_id=request_id,
             run=lambda: agent_service.confirm(
                 session_id,
                 confirmed=request.confirmed,
                 language=request.language or "zh",
                 stream_reply=stream_reply,
+                request_id=request_id,
             ),
             agent_service=agent_service,
             user_service=user_service,

@@ -233,13 +233,13 @@ class AISearchSessionStatus(str, Enum):
 
 
 class AISearchSessionCreateRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=1000)
+    message: str = Field(min_length=1, max_length=4000)
     language: Optional[str] = Field(default="zh", pattern="^(zh|en)$")
     request_id: Optional[str] = Field(default=None, min_length=8, max_length=100)
 
 
 class AISearchSessionTurnRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=1000)
+    message: str = Field(min_length=1, max_length=4000)
     language: Optional[str] = Field(default="zh", pattern="^(zh|en)$")
     request_id: Optional[str] = Field(default=None, min_length=8, max_length=100)
 

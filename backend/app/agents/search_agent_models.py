@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
-from typing import Iterator, Literal, Optional, Protocol
+from dataclasses import dataclass
+from typing import Generic, Iterator, Literal, Optional, Protocol, TypeVar
 
 import httpx
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_deepseek import ChatDeepSeek
 from pydantic import BaseModel, Field
 
@@ -12,6 +13,24 @@ from app.config import settings
 from app.schemas import AIChatMessage, ParsedSearchRequest
 from app.agents.ai_agent import AIClientError, DeepSeekChatClient
 from app.agents.tools import list_agent_tools
+
+
+def _langchain_history_messages(conversation: list[AIChatMessage]) -> list[HumanMessage | AIMessage]:
+    messages: list[HumanMessage | AIMessage] = []
+    for item in conversation:
+        if item.role == "user":
+            messages.append(HumanMessage(content=item.content))
+        elif item.role == "assistant":
+            messages.append(AIMessage(content=item.content))
+    return messages
+
+
+def _http_history_messages(conversation: list[AIChatMessage]) -> list[dict[str, str]]:
+    return [
+        {"role": item.role, "content": item.content}
+        for item in conversation
+        if item.role in {"user", "assistant"}
+    ]
 
 
 class AgentToolRequest(BaseModel):
@@ -28,6 +47,27 @@ AgentScope = Literal[
     "off_topic_hard",
     "adversarial",
 ]
+
+T = TypeVar("T")
+
+
+class AgentModelUsage(BaseModel):
+    provider: str
+    model: str
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    cached_input_tokens: Optional[int] = None
+    uncached_input_tokens: Optional[int] = None
+    cache_hit_ratio: Optional[float] = None
+    raw_usage_json: dict = Field(default_factory=dict)
+    usage_unavailable: bool = False
+
+
+@dataclass(frozen=True)
+class AgentModelResult(Generic[T]):
+    value: T
+    usage: Optional[AgentModelUsage] = None
 
 
 class AgentExtraction(BaseModel):
@@ -53,7 +93,7 @@ class SearchAgentModel(Protocol):
         parsed_request: ParsedSearchRequest,
         conversation: list[AIChatMessage],
         city_catalog: str,
-    ) -> AgentExtraction:
+    ) -> AgentModelResult[AgentExtraction]:
         ...
 
     def reply(
@@ -66,7 +106,7 @@ class SearchAgentModel(Protocol):
         ready_for_confirmation: bool,
         conversation: list[AIChatMessage],
         tool_results: Optional[list[dict]] = None,
-    ) -> str:
+    ) -> AgentModelResult[str]:
         ...
 
     def stream_reply(
@@ -171,6 +211,87 @@ def _normalize_extraction_payload(payload: dict) -> dict:
     return payload
 
 
+def _int_or_none(value: object) -> Optional[int]:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _deep_get(payload: dict, path: tuple[str, ...]) -> object:
+    current: object = payload
+    for key in path:
+        if not isinstance(current, dict) or key not in current:
+            return None
+        current = current[key]
+    return current
+
+
+def _finalize_usage(
+    *,
+    provider: str,
+    model: str,
+    raw_usage: Optional[dict],
+    usage_unavailable: bool = False,
+) -> AgentModelUsage:
+    usage = raw_usage or {}
+    input_tokens = (
+        _int_or_none(usage.get("input_tokens"))
+        or _int_or_none(usage.get("prompt_tokens"))
+    )
+    output_tokens = (
+        _int_or_none(usage.get("output_tokens"))
+        or _int_or_none(usage.get("completion_tokens"))
+    )
+    total_tokens = _int_or_none(usage.get("total_tokens"))
+    cached_input_tokens = (
+        _int_or_none(usage.get("cached_input_tokens"))
+        or _int_or_none(usage.get("cache_read_input_tokens"))
+        or _int_or_none(_deep_get(usage, ("prompt_tokens_details", "cached_tokens")))
+        or _int_or_none(_deep_get(usage, ("input_token_details", "cache_read")))
+        or _int_or_none(_deep_get(usage, ("input_token_details", "cached_tokens")))
+    )
+    uncached_input_tokens = (
+        _int_or_none(usage.get("uncached_input_tokens"))
+        or _int_or_none(usage.get("cache_creation_input_tokens"))
+    )
+    if uncached_input_tokens is None and input_tokens is not None and cached_input_tokens is not None:
+        uncached_input_tokens = max(input_tokens - cached_input_tokens, 0)
+    cache_hit_ratio = None
+    if input_tokens and cached_input_tokens is not None:
+        cache_hit_ratio = cached_input_tokens / input_tokens
+    return AgentModelUsage(
+        provider=provider,
+        model=model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=total_tokens,
+        cached_input_tokens=cached_input_tokens,
+        uncached_input_tokens=uncached_input_tokens,
+        cache_hit_ratio=cache_hit_ratio,
+        raw_usage_json=usage,
+        usage_unavailable=usage_unavailable,
+    )
+
+
+def _usage_from_langchain_response(response: object, *, provider: str, model: str) -> AgentModelUsage:
+    candidates = []
+    usage_metadata = getattr(response, "usage_metadata", None)
+    if isinstance(usage_metadata, dict):
+        candidates.append(usage_metadata)
+    response_metadata = getattr(response, "response_metadata", None)
+    if isinstance(response_metadata, dict):
+        token_usage = response_metadata.get("token_usage")
+        if isinstance(token_usage, dict):
+            candidates.append(token_usage)
+        if isinstance(response_metadata.get("usage"), dict):
+            candidates.append(response_metadata["usage"])
+    raw_usage = candidates[0] if candidates else {}
+    for extra in candidates[1:]:
+        raw_usage = {**extra, **raw_usage}
+    return _finalize_usage(provider=provider, model=model, raw_usage=raw_usage, usage_unavailable=not bool(raw_usage))
+
+
 class DeepSeekLangChainAgentModel:
     provider_name = "deepseek"
 
@@ -195,20 +316,20 @@ class DeepSeekLangChainAgentModel:
         parsed_request: ParsedSearchRequest,
         conversation: list[AIChatMessage],
         city_catalog: str,
-    ) -> AgentExtraction:
+    ) -> AgentModelResult[AgentExtraction]:
         messages = [SystemMessage(content=_extraction_prompt(
             language=language,
             parsed_request=parsed_request,
             city_catalog=city_catalog,
         ))]
-        messages.extend(
-            HumanMessage(content=item.content)
-            for item in conversation[-settings.ai_search_max_history_messages :]
-            if item.role == "user"
-        )
+        messages.extend(_langchain_history_messages(conversation))
         messages.append(HumanMessage(content=message))
         try:
-            return self._extractor.invoke(messages)
+            response = self._extractor.invoke(messages)
+            return AgentModelResult(
+                value=response,
+                usage=_usage_from_langchain_response(response, provider=self.provider_name, model=settings.deepseek_model),
+            )
         except Exception as exc:
             raise AIClientError("DeepSeek parameter extraction failed.") from exc
 
@@ -222,8 +343,7 @@ class DeepSeekLangChainAgentModel:
         ready_for_confirmation: bool,
         conversation: list[AIChatMessage],
         tool_results: Optional[list[dict]] = None,
-    ) -> str:
-        del conversation
+    ) -> AgentModelResult[str]:
         prompt = _reply_prompt(
             language=language,
             parsed_request=parsed_request,
@@ -233,8 +353,11 @@ class DeepSeekLangChainAgentModel:
             tool_results=tool_results,
         )
         try:
-            response = self._model.invoke([SystemMessage(content=prompt)])
-            return str(response.content).strip()
+            response = self._model.invoke([SystemMessage(content=prompt), *_langchain_history_messages(conversation)])
+            return AgentModelResult(
+                value=str(response.content).strip(),
+                usage=_usage_from_langchain_response(response, provider=self.provider_name, model=settings.deepseek_model),
+            )
         except Exception as exc:
             raise AIClientError("DeepSeek response generation failed.") from exc
 
@@ -249,7 +372,6 @@ class DeepSeekLangChainAgentModel:
         conversation: list[AIChatMessage],
         tool_results: Optional[list[dict]] = None,
     ) -> Iterator[str]:
-        del conversation
         prompt = _reply_prompt(
             language=language,
             parsed_request=parsed_request,
@@ -259,7 +381,7 @@ class DeepSeekLangChainAgentModel:
             tool_results=tool_results,
         )
         try:
-            for chunk in self._model.stream([SystemMessage(content=prompt)]):
+            for chunk in self._model.stream([SystemMessage(content=prompt), *_langchain_history_messages(conversation)]):
                 content = getattr(chunk, "content", "")
                 if content:
                     yield str(content)
@@ -273,8 +395,8 @@ class DeepSeekLangChainAgentModel:
                 conversation=[],
                 tool_results=tool_results,
             )
-            if text:
-                yield text
+            if text.value:
+                yield text.value
 
 
 class OpenAICompatibleHttpAgentModel:
@@ -297,7 +419,7 @@ class OpenAICompatibleHttpAgentModel:
         parsed_request: ParsedSearchRequest,
         conversation: list[AIChatMessage],
         city_catalog: str,
-    ) -> AgentExtraction:
+    ) -> AgentModelResult[AgentExtraction]:
         messages: list[dict[str, str]] = [
             {
                 "role": "system",
@@ -308,17 +430,21 @@ class OpenAICompatibleHttpAgentModel:
                 ),
             }
         ]
-        messages.extend(
-            {"role": "user", "content": item.content}
-            for item in conversation[-settings.ai_search_max_history_messages :]
-            if item.role == "user"
-        )
+        messages.extend(_http_history_messages(conversation))
         messages.append({"role": "user", "content": message})
         payload = self._chat_completion(messages, json_mode=self._supports_json_mode)
         try:
             content = payload["choices"][0]["message"]["content"]
             result = json.loads(str(content))
-            return AgentExtraction.model_validate(_normalize_extraction_payload(result))
+            return AgentModelResult(
+                value=AgentExtraction.model_validate(_normalize_extraction_payload(result)),
+                usage=_finalize_usage(
+                    provider=self.provider_name,
+                    model=self._model,
+                    raw_usage=payload.get("usage") if isinstance(payload.get("usage"), dict) else {},
+                    usage_unavailable=not isinstance(payload.get("usage"), dict),
+                ),
+            )
         except (KeyError, IndexError, TypeError, json.JSONDecodeError, ValueError) as exc:
             raise AIClientError("OpenAI-compatible model returned an invalid extraction payload.") from exc
 
@@ -332,8 +458,7 @@ class OpenAICompatibleHttpAgentModel:
         ready_for_confirmation: bool,
         conversation: list[AIChatMessage],
         tool_results: Optional[list[dict]] = None,
-    ) -> str:
-        del conversation
+    ) -> AgentModelResult[str]:
         messages = [
             {
                 "role": "system",
@@ -347,6 +472,7 @@ class OpenAICompatibleHttpAgentModel:
                 ),
             }
         ]
+        messages.extend(_http_history_messages(conversation))
         payload = self._chat_completion(messages, json_mode=False)
         try:
             content = str(payload["choices"][0]["message"]["content"]).strip()
@@ -354,7 +480,15 @@ class OpenAICompatibleHttpAgentModel:
             raise AIClientError("OpenAI-compatible model returned an invalid reply payload.") from exc
         if not content:
             raise AIClientError("OpenAI-compatible model returned an empty reply.")
-        return content
+        return AgentModelResult(
+            value=content,
+            usage=_finalize_usage(
+                provider=self.provider_name,
+                model=self._model,
+                raw_usage=payload.get("usage") if isinstance(payload.get("usage"), dict) else {},
+                usage_unavailable=not isinstance(payload.get("usage"), dict),
+            ),
+        )
 
     def stream_reply(
         self,
@@ -367,7 +501,6 @@ class OpenAICompatibleHttpAgentModel:
         conversation: list[AIChatMessage],
         tool_results: Optional[list[dict]] = None,
     ) -> Iterator[str]:
-        del conversation
         messages = [
             {
                 "role": "system",
@@ -381,6 +514,7 @@ class OpenAICompatibleHttpAgentModel:
                 ),
             }
         ]
+        messages.extend(_http_history_messages(conversation))
         yield from self._chat_completion_stream(messages)
 
     def _chat_completion(self, messages: list[dict[str, str]], *, json_mode: bool) -> dict:
@@ -402,6 +536,11 @@ class OpenAICompatibleHttpAgentModel:
                 timeout=self._timeout,
             )
             response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            body = getattr(exc.response, "text", "")
+            if any(term in body.lower() for term in ("context", "token", "maximum")):
+                raise AIClientError("OpenAI-compatible model context length exceeded.") from exc
+            raise AIClientError("OpenAI-compatible model request failed.") from exc
         except httpx.HTTPError as exc:
             raise AIClientError("OpenAI-compatible model request failed.") from exc
         return response.json()
@@ -459,7 +598,7 @@ class LegacyCompatibleAgentModel:
         parsed_request: ParsedSearchRequest,
         conversation: list[AIChatMessage],
         city_catalog: str,
-    ) -> AgentExtraction:
+    ) -> AgentModelResult[AgentExtraction]:
         from app.services.search_service import get_search_service
 
         del city_catalog
@@ -469,10 +608,13 @@ class LegacyCompatibleAgentModel:
             cities=get_search_service()._data_source.get_catalog().cities,
             language=language,
         )
-        return AgentExtraction(
-            parameter_patch=turn.extracted_request,
-            intent="provide_parameters",
-            assistant_message=turn.assistant_message,
+        return AgentModelResult(
+            value=AgentExtraction(
+                parameter_patch=turn.extracted_request,
+                intent="provide_parameters",
+                assistant_message=turn.assistant_message,
+            ),
+            usage=_finalize_usage(provider=self.provider_name, model="legacy", raw_usage={}, usage_unavailable=True),
         )
 
     def reply(
@@ -485,19 +627,21 @@ class LegacyCompatibleAgentModel:
         ready_for_confirmation: bool,
         conversation: list[AIChatMessage],
         tool_results: Optional[list[dict]] = None,
-    ) -> str:
+    ) -> AgentModelResult[str]:
         del parsed_request, conversation, ready_for_confirmation, tool_results
         if language == "en":
             if missing_fields:
-                return f"Please provide {missing_fields[0].replace('_', ' ')}."
+                text = f"Please provide {missing_fields[0].replace('_', ' ')}."
+                return AgentModelResult(value=text, usage=_finalize_usage(provider=self.provider_name, model="legacy", raw_usage={}, usage_unavailable=True))
             if next_question_field:
-                return f"You may confirm now, or tell me your preference for {next_question_field.replace('_', ' ')}."
-            return "The required conditions are ready. You may confirm the search."
+                text = f"You may confirm now, or tell me your preference for {next_question_field.replace('_', ' ')}."
+                return AgentModelResult(value=text, usage=_finalize_usage(provider=self.provider_name, model="legacy", raw_usage={}, usage_unavailable=True))
+            return AgentModelResult(value="The required conditions are ready. You may confirm the search.", usage=_finalize_usage(provider=self.provider_name, model="legacy", raw_usage={}, usage_unavailable=True))
         if missing_fields:
-            return f"Please provide {missing_fields[0]}."
+            return AgentModelResult(value=f"Please provide {missing_fields[0]}.", usage=_finalize_usage(provider=self.provider_name, model="legacy", raw_usage={}, usage_unavailable=True))
         if next_question_field:
-            return f"You may confirm now, or continue with {next_question_field}."
-        return "The required conditions are ready. You may confirm the search."
+            return AgentModelResult(value=f"You may confirm now, or continue with {next_question_field}.", usage=_finalize_usage(provider=self.provider_name, model="legacy", raw_usage={}, usage_unavailable=True))
+        return AgentModelResult(value="The required conditions are ready. You may confirm the search.", usage=_finalize_usage(provider=self.provider_name, model="legacy", raw_usage={}, usage_unavailable=True))
 
     def stream_reply(
         self,
@@ -519,8 +663,8 @@ class LegacyCompatibleAgentModel:
             conversation=conversation,
             tool_results=tool_results,
         )
-        for start in range(0, len(text), 8):
-            yield text[start:start + 8]
+        for start in range(0, len(text.value), 8):
+            yield text.value[start:start + 8]
 
 
 def _configured_provider() -> str:
