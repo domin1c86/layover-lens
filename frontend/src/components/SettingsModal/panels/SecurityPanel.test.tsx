@@ -12,6 +12,7 @@ const authApiMock = vi.hoisted(() => ({
   setupTotp: vi.fn(),
   enableTotp: vi.fn(),
   disableTotp: vi.fn(),
+  updateTotpEmailCodeReplacement: vi.fn(),
 }))
 
 const authState = vi.hoisted(() => ({
@@ -21,6 +22,7 @@ const authState = vi.hoisted(() => ({
     email: 'old@example.com',
     email_verified: false,
     totp_enabled: false,
+    totp_replaces_email_codes: false,
     created_at: '2026-01-01T00:00:00',
   },
   sessionDuration: 'day',
@@ -107,6 +109,10 @@ const messages: Record<string, string> = {
   'settings.security.totpSetupFailed': 'Setup failed.',
   'settings.security.totpCodeInvalid': 'Invalid code.',
   'settings.security.totpDisableFailed': 'Disable failed.',
+  'settings.security.totpReplacementTitle': 'Use 2FA instead of email codes',
+  'settings.security.totpReplacementDesc': 'Use authenticator codes for recovery.',
+  'settings.security.totpReplacementOwnershipNote': 'Email ownership still requires email codes.',
+  'settings.security.totpReplacementFailed': 'Replacement update failed.',
 }
 
 vi.mock('../../../context/LocaleContext', () => ({
@@ -142,6 +148,7 @@ describe('SecurityPanel', () => {
       email: 'old@example.com',
       email_verified: false,
       totp_enabled: false,
+      totp_replaces_email_codes: false,
       created_at: '2026-01-01T00:00:00',
     }
     authState.sessionDuration = 'day'
@@ -150,6 +157,11 @@ describe('SecurityPanel', () => {
     authApiMock.updatePassword.mockResolvedValue(undefined)
     authApiMock.setupTotp.mockResolvedValue({ secret: 'SECRET123', provisioning_uri: 'otpauth://totp/test' })
     authApiMock.enableTotp.mockResolvedValue({ ...authState.user, totp_enabled: true })
+    authApiMock.updateTotpEmailCodeReplacement.mockResolvedValue({
+      ...authState.user,
+      totp_enabled: true,
+      totp_replaces_email_codes: true,
+    })
   })
 
   it('shows status explanations and password composition hint', () => {
@@ -281,5 +293,25 @@ describe('SecurityPanel', () => {
 
     expect(disableButton).not.toBeDisabled()
     expect(disableButton).toHaveClass('settings-panel__btn--password-ready')
+  })
+
+  it('only enables the 2FA email-code replacement switch after TOTP is enabled', async () => {
+    const { rerender } = render(<SecurityPanel />)
+    const disabledSwitch = screen.getByRole('switch', { name: 'Use 2FA instead of email codes' })
+    expect(disabledSwitch).toBeDisabled()
+
+    authState.user = {
+      ...authState.user,
+      totp_enabled: true,
+      totp_replaces_email_codes: false,
+    }
+    rerender(<SecurityPanel />)
+
+    const enabledSwitch = screen.getByRole('switch', { name: 'Use 2FA instead of email codes' })
+    expect(enabledSwitch).not.toBeDisabled()
+    fireEvent.click(enabledSwitch)
+
+    await waitFor(() => expect(authApiMock.updateTotpEmailCodeReplacement).toHaveBeenCalledWith(true))
+    await waitFor(() => expect(authState.refreshUser).toHaveBeenCalled())
   })
 })

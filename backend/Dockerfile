@@ -15,6 +15,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
+COPY data/route_training/artifacts/ ./data/route_training/artifacts/
+COPY data/route_training/models/ ./data/route_training/models/
 COPY planner/ ./planner/
 COPY tests/ ./tests/
 

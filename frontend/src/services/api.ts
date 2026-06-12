@@ -5,6 +5,9 @@ import type {
   CityListResponse,
   City,
   AiSessionResponse,
+  AiSessionListResponse,
+  AiSessionSummary,
+  AiStreamEvent,
   AiConfirmRequest,
   AuthLoginRequest,
   AuthLoginResponse,
@@ -21,6 +24,8 @@ import type {
   SessionDuration,
   SessionDurationUpdateResponse,
   TotpSetupResponse,
+  RouteFeedbackPayload,
+  RouteFeedbackResponse,
   UserProfile,
 } from '../types';
 import { clearAuthSession } from './authStorage';
@@ -232,6 +237,11 @@ export const authApi = {
     return response.data;
   },
 
+  updateTotpEmailCodeReplacement: async (enabled: boolean): Promise<UserProfile> => {
+    const response = await apiClient.put<UserProfile>('/user/totp/email-code-replacement', { enabled });
+    return response.data;
+  },
+
   updateSessionDuration: async (sessionDuration: SessionDuration): Promise<SessionDurationUpdateResponse> => {
     const response = await apiClient.put<SessionDurationUpdateResponse>('/user/session-duration', {
       session_duration: sessionDuration,
@@ -254,6 +264,11 @@ export const searchApi = {
     const response = await apiClient.post<SearchResponse>('/search', request);
     return response.data;
   },
+
+  submitRouteFeedback: async (request: RouteFeedbackPayload): Promise<RouteFeedbackResponse> => {
+    const response = await apiClient.post<RouteFeedbackResponse>('/search/feedback', request);
+    return response.data;
+  },
 };
 
 // 城市 API
@@ -268,15 +283,19 @@ export const cityApi = {
 
 // AI 搜索 API
 export const aiSearchApi = {
-  createSession: async (message: string): Promise<AiSessionResponse> => {
-    const response = await apiClient.post<AiSessionResponse>('/search/ai/sessions', { message });
+  createSession: async (message: string, language?: string): Promise<AiSessionResponse> => {
+    const response = await apiClient.post<AiSessionResponse>('/search/ai/sessions', {
+      message,
+      language,
+      request_id: crypto.randomUUID(),
+    });
     return response.data;
   },
 
   sendMessage: async (sessionId: string, message: string, language?: string): Promise<AiSessionResponse> => {
     const response = await apiClient.post<AiSessionResponse>(
       `/search/ai/sessions/${sessionId}/messages`,
-      { message, language }
+      { message, language, request_id: crypto.randomUUID() }
     );
     return response.data;
   },
@@ -284,7 +303,7 @@ export const aiSearchApi = {
   confirm: async (sessionId: string, confirmed: boolean): Promise<AiSessionResponse> => {
     const response = await apiClient.post<AiSessionResponse>(
       `/search/ai/sessions/${sessionId}/confirm`,
-      { confirmed } as AiConfirmRequest
+      { confirmed, request_id: crypto.randomUUID() } as AiConfirmRequest
     );
     return response.data;
   },
@@ -296,6 +315,104 @@ export const aiSearchApi = {
     });
     return response.data;
   },
+
+  listSessions: async (): Promise<AiSessionSummary[]> => {
+    const response = await apiClient.get<AiSessionListResponse>('/search/ai/sessions');
+    return response.data.sessions;
+  },
+
+  getSession: async (sessionId: string): Promise<AiSessionResponse> => {
+    const response = await apiClient.get<AiSessionResponse>(`/search/ai/sessions/${sessionId}`);
+    return response.data;
+  },
+
+  renameSession: async (sessionId: string, title: string): Promise<AiSessionSummary> => {
+    const response = await apiClient.put<AiSessionSummary>(`/search/ai/sessions/${sessionId}`, { title });
+    return response.data;
+  },
+
+  deleteSession: async (sessionId: string): Promise<void> => {
+    await apiClient.delete(`/search/ai/sessions/${sessionId}`);
+  },
+
+  stream: async (
+    path: string,
+    body: Record<string, unknown>,
+    onEvent: (event: AiStreamEvent) => void,
+    signal?: AbortSignal
+  ): Promise<void> => {
+    const csrfToken = getCookieValue(CSRF_COOKIE_NAME);
+    const response = await fetch(`${API_BASE_URL}/api/v1${path}`, {
+      method: 'POST',
+      credentials: 'include',
+      signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(csrfToken ? { [CSRF_HEADER_NAME]: csrfToken } : {}),
+      },
+      body: JSON.stringify({ ...body, request_id: crypto.randomUUID() }),
+    });
+    if (!response.ok || !response.body) {
+      if (response.status === 401 || response.status === 403) {
+        clearAuthSession();
+        window.dispatchEvent(new Event('auth:unauthorized'));
+      }
+      let message = `AI stream failed with status ${response.status}`;
+      try {
+        const payload = await response.json();
+        const detail = payload?.detail;
+        if (typeof detail === 'string') message = detail;
+        if (detail?.code) message = `${detail.code}: ${detail.message || message}`;
+      } catch {
+        // Keep the stable status fallback when the response body is not JSON.
+      }
+      throw new Error(message);
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const frames = buffer.split('\n\n');
+      buffer = frames.pop() || '';
+      for (const frame of frames) {
+        let eventName = '';
+        let data = '';
+        for (const line of frame.split('\n')) {
+          if (line.startsWith('event:')) eventName = line.slice(6).trim();
+          if (line.startsWith('data:')) data += line.slice(5).trim();
+        }
+        if (eventName && data) {
+          onEvent({ event: eventName, ...JSON.parse(data) } as AiStreamEvent);
+        }
+      }
+    }
+  },
+
+  streamCreate: (
+    message: string,
+    language: string,
+    onEvent: (event: AiStreamEvent) => void,
+    signal?: AbortSignal
+  ) => aiSearchApi.stream('/search/ai/sessions/stream', { message, language }, onEvent, signal),
+
+  streamMessage: (
+    sessionId: string,
+    message: string,
+    language: string,
+    onEvent: (event: AiStreamEvent) => void,
+    signal?: AbortSignal
+  ) => aiSearchApi.stream(`/search/ai/sessions/${sessionId}/messages/stream`, { message, language }, onEvent, signal),
+
+  streamConfirm: (
+    sessionId: string,
+    confirmed: boolean,
+    language: string,
+    onEvent: (event: AiStreamEvent) => void,
+    signal?: AbortSignal
+  ) => aiSearchApi.stream(`/search/ai/sessions/${sessionId}/confirm/stream`, { confirmed, language }, onEvent, signal),
 };
 
 export default apiClient;

@@ -71,6 +71,10 @@ describe('dictionary', () => {
       'totpQrCodeLabel',
       'totpUseSecret',
       'totpUseQr',
+      'totpReplacementTitle',
+      'totpReplacementDesc',
+      'totpReplacementOwnershipNote',
+      'totpReplacementFailed',
     ]
 
     for (const key of keys) {
@@ -79,6 +83,47 @@ describe('dictionary', () => {
       expect(dict.zh.settings.security[key as keyof typeof dict.zh.settings.security]).toBeTruthy()
       expect(dict.en.settings.security[key as keyof typeof dict.en.settings.security]).toBeTruthy()
     }
+  })
+
+  it('contains AI place recommendation copy', () => {
+    const keys = [
+      'poiSource',
+      'poiSingleVerified',
+      'poiDualVerified',
+      'poiAddressUnknown',
+      'strategyResultNotice',
+      'satisfactionPrompt',
+      'closeRouteDetail',
+    ]
+
+    for (const key of keys) {
+      expect(dict.zh.aiChat).toHaveProperty(key)
+      expect(dict.en.aiChat).toHaveProperty(key)
+      expect(dict.zh.aiChat[key as keyof typeof dict.zh.aiChat]).toBeTruthy()
+      expect(dict.en.aiChat[key as keyof typeof dict.en.aiChat]).toBeTruthy()
+    }
+  })
+
+  it('contains route feedback and external link copy', () => {
+    for (const key of ['title', 'description', 'dontRemind', 'cancel', 'continue']) {
+      expect(dict.zh.externalLink).toHaveProperty(key)
+      expect(dict.en.externalLink).toHaveProperty(key)
+    }
+
+    for (const key of ['title', 'aiTitle', 'starLabel', 'selectedRoutes', 'commentPlaceholder', 'submit', 'submitting', 'submitSuccess', 'submitFailed', 'cancel']) {
+      expect(dict.zh.routeFeedback).toHaveProperty(key)
+      expect(dict.en.routeFeedback).toHaveProperty(key)
+    }
+
+    for (const key of ['overall', 'route_reasonable', 'cost_trustworthy', 'transfer_clear']) {
+      expect(dict.zh.routeFeedback.ratings).toHaveProperty(key)
+      expect(dict.en.routeFeedback.ratings).toHaveProperty(key)
+    }
+
+    expect(dict.zh.resultList).toHaveProperty('feedback')
+    expect(dict.en.resultList).toHaveProperty('feedback')
+    expect(dict.zh.ticketProviders).toHaveProperty('12306')
+    expect(dict.en.ticketProviders).toHaveProperty('12306')
   })
 
   it('contains account settings copy required by profile flows', () => {

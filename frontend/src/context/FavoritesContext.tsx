@@ -1,9 +1,9 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
-import type { RoutePlan } from '../types'
+import type { FavoriteItem } from '../types'
 
 const STORAGE_KEY = 'layover-lens-favorites'
 
-function loadFavorites(): RoutePlan[] {
+function loadFavorites(): FavoriteItem[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     const parsed = raw ? JSON.parse(raw) : []
@@ -14,7 +14,7 @@ function loadFavorites(): RoutePlan[] {
   }
 }
 
-function saveFavorites(routes: RoutePlan[]) {
+function saveFavorites(routes: FavoriteItem[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(routes))
   } catch {
@@ -23,21 +23,21 @@ function saveFavorites(routes: RoutePlan[]) {
 }
 
 interface FavoritesContextType {
-  favorites: RoutePlan[]
-  toggleFavorite: (route: RoutePlan) => void
+  favorites: FavoriteItem[]
+  toggleFavorite: (route: FavoriteItem) => void
   isFavorite: (routeId: string) => boolean
 }
 
 const FavoritesContext = createContext<FavoritesContextType | null>(null)
 
 export function FavoritesProvider({ children }: { children: ReactNode }) {
-  const [favorites, setFavorites] = useState<RoutePlan[]>(loadFavorites)
+  const [favorites, setFavorites] = useState<FavoriteItem[]>(loadFavorites)
 
   useEffect(() => {
     saveFavorites(favorites)
   }, [favorites])
 
-  const toggleFavorite = useCallback((route: RoutePlan) => {
+  const toggleFavorite = useCallback((route: FavoriteItem) => {
     setFavorites((prev) => {
       const exists = prev.some((r) => r.id === route.id)
       if (exists) return prev.filter((r) => r.id !== route.id)

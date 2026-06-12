@@ -17,6 +17,7 @@ from app.schemas import (
     SessionDurationUpdateResponse,
     SuccessResponse,
     TotpDisableRequest,
+    TotpEmailCodeReplacementUpdateRequest,
     TotpEnableRequest,
     TotpSetupRequest,
     TotpSetupResponse,
@@ -39,6 +40,8 @@ from app.services.user_service import (
     require_csrf,
     set_auth_cookies,
 )
+from app.agents.search_agent import SearchAgentService, get_search_agent_service
+from app.agents.memory import AgentMemoryService, get_agent_memory_service
 
 router = APIRouter(prefix="/user")
 
@@ -69,9 +72,18 @@ def delete_account(
     request: Request,
     current_user: AuthenticatedUser = Depends(get_current_user),
     user_service: UserService = Depends(get_user_service),
+    agent_service: SearchAgentService = Depends(get_search_agent_service),
+    memory_service: AgentMemoryService = Depends(get_agent_memory_service),
 ) -> SuccessResponse:
     try:
+        ai_session_ids = user_service.list_user_ai_session_ids(current_user.user.id)
+        memory_service.clear_memories(current_user.user.id)
         user_service.delete_account(current_user.user.id, request=request)
+        for session_id in ai_session_ids:
+            try:
+                agent_service.delete_session(session_id)
+            except Exception as exc:
+                user_service.queue_ai_checkpoint_deletion(current_user.user.id, session_id, str(exc))
         return SuccessResponse(success=True)
     except UserServiceError as exc:
         _raise_http(exc)
@@ -260,6 +272,23 @@ def disable_totp(
         )
         user_service.revoke_other_tokens(current_user.user.id, current_user.token_hash)
         return profile
+    except UserServiceError as exc:
+        _raise_http(exc)
+
+
+@router.put("/totp/email-code-replacement", response_model=UserProfile, dependencies=[Depends(require_csrf)])
+def update_totp_email_code_replacement(
+    payload: TotpEmailCodeReplacementUpdateRequest,
+    request: Request,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    user_service: UserService = Depends(get_user_service),
+) -> UserProfile:
+    try:
+        return user_service.update_totp_email_code_replacement(
+            current_user.user.id,
+            enabled=payload.enabled,
+            request=request,
+        )
     except UserServiceError as exc:
         _raise_http(exc)
 

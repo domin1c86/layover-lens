@@ -109,7 +109,7 @@ class DeepSeekChatClient:
         ]
         messages.extend(
             {"role": message.role, "content": message.content}
-            for message in conversation[-settings.ai_search_max_history_messages :]
+            for message in conversation
         )
 
         try:

@@ -12,9 +12,13 @@ class MockAdapter(DataSourceBase):
         self,
         primary_repository: CatalogRepository,
         fallback_repository: Optional[CatalogRepository] = None,
+        source_label: str = "mock",
+        source_warning: str = "",
     ) -> None:
         self._primary_repository = primary_repository
         self._fallback_repository = fallback_repository
+        self._source_label = source_label
+        self._source_warning = source_warning
         self._catalog: Optional[CatalogSnapshot] = None
         self._backend_description: Optional[str] = None
         self._lock = Lock()
@@ -55,4 +59,5 @@ class MockAdapter(DataSourceBase):
     def describe_source(self) -> str:
         if self._backend_description is None:
             self.get_catalog()
-        return f"mock:{self._backend_description}"
+        suffix = f":{self._source_warning}" if self._source_warning else ""
+        return f"{self._source_label}:{self._backend_description}{suffix}"

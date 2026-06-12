@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     email_verified BOOLEAN NOT NULL DEFAULT TRUE,
     totp_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    totp_replaces_email_codes BOOLEAN NOT NULL DEFAULT FALSE,
     nickname VARCHAR(80),
     avatar_url VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -130,10 +131,113 @@ CREATE TABLE IF NOT EXISTS ai_search_sessions (
     status VARCHAR(40) NOT NULL,
     last_message_preview VARCHAR(255) NOT NULL,
     response_json MEDIUMTEXT NOT NULL,
+    active_run_id VARCHAR(100),
+    active_run_started_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI搜索会话表';
+
+CREATE TABLE IF NOT EXISTS ai_agent_usage (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(40) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_ai_usage_user_time (user_id, created_at),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ai_agent_requests (
+    request_id VARCHAR(100) PRIMARY KEY,
+    user_id VARCHAR(40) NOT NULL,
+    session_id VARCHAR(80) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_ai_request_session (session_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (session_id) REFERENCES ai_search_sessions(session_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ai_agent_token_usage (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(40) NOT NULL,
+    session_id VARCHAR(80) NOT NULL,
+    request_id VARCHAR(100) NOT NULL,
+    call_type VARCHAR(40) NOT NULL,
+    provider VARCHAR(80) NOT NULL,
+    model VARCHAR(120) NOT NULL,
+    input_tokens INT NULL,
+    output_tokens INT NULL,
+    total_tokens INT NULL,
+    cached_input_tokens INT NULL,
+    uncached_input_tokens INT NULL,
+    cache_hit_ratio DECIMAL(10,6) NULL,
+    raw_usage_json TEXT NOT NULL,
+    usage_unavailable BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_ai_token_user_time (user_id, created_at),
+    INDEX idx_ai_token_provider_time (provider, model, created_at),
+    INDEX idx_ai_token_session (session_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (session_id) REFERENCES ai_search_sessions(session_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ai_agent_user_memory (
+    user_id VARCHAR(40) NOT NULL,
+    memory_key VARCHAR(120) NOT NULL,
+    memory_value_json TEXT NOT NULL,
+    confidence DECIMAL(5,4) NOT NULL DEFAULT 0.6000,
+    evidence_count INT NOT NULL DEFAULT 1,
+    source VARCHAR(40) NOT NULL DEFAULT 'agent_rule',
+    last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, memory_key),
+    INDEX idx_ai_memory_user_updated (user_id, updated_at),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ai_checkpoint_deletions (
+    session_id VARCHAR(80) PRIMARY KEY,
+    user_id VARCHAR(40) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP NULL,
+    last_error VARCHAR(255)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS poi_cache (
+    cache_key VARCHAR(255) PRIMARY KEY,
+    provider VARCHAR(40) NOT NULL,
+    city VARCHAR(120) NOT NULL,
+    query_text VARCHAR(255) NOT NULL,
+    normalized_json MEDIUMTEXT NOT NULL,
+    raw_json MEDIUMTEXT NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_poi_cache_city_query (city, query_text),
+    INDEX idx_poi_cache_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS poi_rag_chunks (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    cache_key VARCHAR(255) NOT NULL,
+    provider VARCHAR(40) NOT NULL,
+    provider_place_id VARCHAR(120) NOT NULL,
+    poi_name VARCHAR(255) NOT NULL,
+    city VARCHAR(120) NOT NULL,
+    chunk_text TEXT NOT NULL,
+    tags_json TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_poi_rag_city (city),
+    INDEX idx_poi_rag_cache (cache_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS poi_provider_usage (
+    provider VARCHAR(40) NOT NULL,
+    api_name VARCHAR(60) NOT NULL,
+    period_key VARCHAR(20) NOT NULL,
+    call_count INT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (provider, api_name, period_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS bookings (
     booking_id VARCHAR(40) PRIMARY KEY,
@@ -158,6 +262,57 @@ CREATE TABLE IF NOT EXISTS security_audit_logs (
     INDEX idx_audit_user_time (user_id, created_at),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='security audit logs';
+
+CREATE TABLE IF NOT EXISTS route_feedback (
+    id VARCHAR(80) PRIMARY KEY,
+    user_id VARCHAR(64) NULL,
+    search_id VARCHAR(120) NOT NULL,
+    recommendation_id VARCHAR(255) NOT NULL,
+    action VARCHAR(40) NOT NULL,
+    anonymous_session_id VARCHAR(120) NOT NULL DEFAULT '',
+    source VARCHAR(20) NOT NULL DEFAULT 'search',
+    feedback_context VARCHAR(40) NOT NULL DEFAULT 'route_card',
+    ratings_json JSON NOT NULL,
+    selected_recommendation_ids_json JSON NOT NULL,
+    clicked_provider VARCHAR(20) NOT NULL DEFAULT '',
+    clicked_segment_index INT NULL,
+    comment TEXT NULL,
+    search_request_json JSON NOT NULL,
+    recommendation_json JSON NOT NULL,
+    model_version VARCHAR(120) NOT NULL DEFAULT '',
+    dataset_version VARCHAR(120) NOT NULL DEFAULT '',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_route_feedback_user_time (user_id, created_at),
+    INDEX idx_route_feedback_model (model_version, dataset_version),
+    CONSTRAINT fk_route_feedback_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='route recommendation feedback';
+
+CREATE TABLE IF NOT EXISTS route_feedback_annotations (
+    feedback_id VARCHAR(80) PRIMARY KEY,
+    annotator_user_id VARCHAR(64) NOT NULL,
+    label VARCHAR(40) NOT NULL,
+    issues_json JSON NOT NULL,
+    notes TEXT NULL,
+    annotated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_route_feedback_annotation_feedback
+        FOREIGN KEY (feedback_id) REFERENCES route_feedback(id) ON DELETE CASCADE,
+    CONSTRAINT fk_route_feedback_annotation_user
+        FOREIGN KEY (annotator_user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='manual route feedback annotations';
+
+CREATE TABLE IF NOT EXISTS route_training_builds (
+    dataset_version VARCHAR(120) PRIMARY KEY,
+    model_version VARCHAR(120) NOT NULL,
+    status VARCHAR(40) NOT NULL,
+    artifact_path VARCHAR(500) NOT NULL,
+    model_path VARCHAR(500) NOT NULL,
+    source_rows INT NOT NULL DEFAULT 0,
+    accepted_rows INT NOT NULL DEFAULT 0,
+    rejected_rows INT NOT NULL DEFAULT 0,
+    edge_count INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_route_training_model (model_version)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='route training build metadata';
 
 CREATE TABLE IF NOT EXISTS user_totp_settings (
     user_id VARCHAR(40) PRIMARY KEY,

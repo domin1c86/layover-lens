@@ -3,6 +3,7 @@ from app.data_source.base import (
     CityRecord,
     DataSourceBase,
     RouteRecord,
+    SegmentEdgeRecord,
     StationRecord,
 )
 from app.data_source.factory import create_data_source, reset_data_source_cache
@@ -12,6 +13,7 @@ __all__ = [
     "CityRecord",
     "DataSourceBase",
     "RouteRecord",
+    "SegmentEdgeRecord",
     "StationRecord",
     "create_data_source",
     "reset_data_source_cache",

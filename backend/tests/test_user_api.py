@@ -3,16 +3,26 @@ import re
 from uuid import uuid4
 
 import pyotp
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
 from app.data_source import reset_data_source_cache
 from app.main import app
+from app.agents.search_agent import reset_search_agent_service_cache
 from app.services import reset_search_service_cache, reset_user_service_cache
+
+
+@pytest.fixture(autouse=True)
+def _use_legacy_agent_model(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "ai_model_provider", "legacy")
+    monkeypatch.setattr(settings, "deepseek_api_key", "")
+    monkeypatch.setattr(settings, "route_dataset_mode", "mock")
 
 
 def _fresh_client() -> TestClient:
     reset_search_service_cache()
+    reset_search_agent_service_cache()
     reset_data_source_cache()
     reset_user_service_cache()
     return TestClient(app)
@@ -439,6 +449,12 @@ def test_totp_setup_login_challenge_and_disable() -> None:
     email = _unique_email("totp")
     _, headers = _register(client, email)
 
+    assert client.put(
+        "/api/v1/user/totp/email-code-replacement",
+        headers=headers,
+        json={"enabled": True},
+    ).status_code == 409
+
     wrong_setup = client.post(
         "/api/v1/user/totp/setup",
         headers=headers,
@@ -469,6 +485,37 @@ def test_totp_setup_login_challenge_and_disable() -> None:
     )
     assert enabled.status_code == 200
     assert enabled.json()["totp_enabled"] is True
+    assert enabled.json()["totp_replaces_email_codes"] is False
+
+    replacement = client.put(
+        "/api/v1/user/totp/email-code-replacement",
+        headers=headers,
+        json={"enabled": True},
+    )
+    assert replacement.status_code == 200
+    assert replacement.json()["totp_replaces_email_codes"] is True
+
+    reset_method = client.post(
+        "/api/v1/auth/forgot-password/check-email",
+        json={"email": email},
+    )
+    assert reset_method.json() == {"registered": True, "verification_method": "totp"}
+    send_reset = client.post(
+        "/api/v1/auth/forgot-password/send-code",
+        json={"email": email},
+    )
+    assert send_reset.json() == {"expires_in_seconds": 0, "verification_method": "totp"}
+    assert client.post(
+        "/api/v1/auth/forgot-password/verify-code",
+        json={"email": email, "code": "000000"},
+    ).json() == {"verified": False, "reset_token": None}
+    totp_reset = client.post(
+        "/api/v1/auth/forgot-password/verify-code",
+        json={"email": email, "code": pyotp.TOTP(secret).now()},
+    )
+    assert totp_reset.status_code == 200
+    assert totp_reset.json()["verified"] is True
+    assert totp_reset.json()["reset_token"]
 
     client.cookies.clear()
     login = client.post(
@@ -504,6 +551,15 @@ def test_totp_setup_login_challenge_and_disable() -> None:
     )
     assert disabled.status_code == 200
     assert disabled.json()["totp_enabled"] is False
+    assert disabled.json()["totp_replaces_email_codes"] is False
+    assert client.post(
+        "/api/v1/auth/forgot-password/reset",
+        json={"reset_token": totp_reset.json()["reset_token"], "new_password": "should-not-apply"},
+    ).status_code == 400
+    assert client.post(
+        "/api/v1/auth/forgot-password/check-email",
+        json={"email": email},
+    ).json() == {"registered": True, "verification_method": "email"}
 
 
 def test_password_reset_preferences_and_import_platforms() -> None:
@@ -514,7 +570,7 @@ def test_password_reset_preferences_and_import_platforms() -> None:
     assert client.post(
         "/api/v1/auth/forgot-password/check-email",
         json={"email": email},
-    ).json() == {"registered": True}
+    ).json() == {"registered": True, "verification_method": "email"}
     send_response = client.post(
         "/api/v1/auth/forgot-password/send-code",
         json={"email": email},
@@ -563,14 +619,14 @@ def test_favorites_devices_bookings_and_ai_session_metadata(monkeypatch) -> None
             "Turn",
             (),
             {
-                "assistant_message": "请补充出发城市和日期。",
+                "assistant_message": "Please provide the departure city and travel date.",
                 "extracted_request": {"to_city": "上海"},
                 "should_confirm": False,
-                "summary": "目的地上海。",
+                "summary": "Destination Shanghai.",
             },
         )()
 
-    monkeypatch.setattr("app.services.ai_agent.DeepSeekChatClient.respond", fake_respond)
+    monkeypatch.setattr("app.agents.ai_agent.DeepSeekChatClient.respond", fake_respond)
 
     client = _fresh_client()
     email = _unique_email("full")
@@ -620,7 +676,7 @@ def test_favorites_devices_bookings_and_ai_session_metadata(monkeypatch) -> None
     ai_response = client.post(
         "/api/v1/search/ai/sessions",
         headers=second_headers,
-        json={"message": "我想去上海"},
+        json={"message": "I want to go to Shanghai."},
     )
     assert ai_response.status_code == 200
     session_id = ai_response.json()["session_id"]
@@ -639,3 +695,95 @@ def test_favorites_devices_bookings_and_ai_session_metadata(monkeypatch) -> None
         f"/api/v1/search/ai/sessions/{session_id}",
         headers=second_headers,
     ).status_code == 200
+
+
+def test_ai_sessions_require_authentication_and_enforce_ownership(monkeypatch) -> None:
+    def fake_respond(self, *, conversation, draft_request, cities, language="zh"):
+        return type(
+            "Turn",
+            (),
+            {
+                "assistant_message": "Please provide the travel date.",
+                "extracted_request": {"from_city": "Beijing", "to_city": "Shanghai"},
+                "should_confirm": False,
+                "summary": "Beijing to Shanghai.",
+            },
+        )()
+
+    monkeypatch.setattr("app.agents.ai_agent.DeepSeekChatClient.respond", fake_respond)
+    client = _fresh_client()
+    assert client.post("/api/v1/search/ai/sessions", json={"message": "Beijing to Shanghai"}).status_code == 401
+
+    _, owner_headers = _register(client, _unique_email("ai-owner"))
+    _, other_headers = _register(client, _unique_email("ai-other"))
+    created = client.post(
+        "/api/v1/search/ai/sessions",
+        headers=owner_headers,
+        json={"message": "Beijing to Shanghai", "language": "en"},
+    )
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    assert client.get(f"/api/v1/search/ai/sessions/{session_id}", headers=other_headers).status_code == 404
+    assert client.post(
+        f"/api/v1/search/ai/sessions/{session_id}/messages",
+        headers=other_headers,
+        json={"message": "tomorrow", "language": "en"},
+    ).status_code == 404
+    assert client.get(f"/api/v1/search/ai/sessions/{session_id}", headers=owner_headers).status_code == 200
+
+
+def test_ai_stream_returns_ordered_sse_events(monkeypatch) -> None:
+    def fake_respond(self, *, conversation, draft_request, cities, language="zh"):
+        return type(
+            "Turn",
+            (),
+            {
+                "assistant_message": "Please provide the travel date.",
+                "extracted_request": {"from_city": "Beijing", "to_city": "Shanghai"},
+                "should_confirm": False,
+                "summary": "Beijing to Shanghai.",
+            },
+        )()
+
+    monkeypatch.setattr("app.agents.ai_agent.DeepSeekChatClient.respond", fake_respond)
+    client = _fresh_client()
+    _, headers = _register(client, _unique_email("ai-stream"))
+    response = client.post(
+        "/api/v1/search/ai/sessions/stream",
+        headers=headers,
+        json={"message": "Beijing to Shanghai", "language": "en"},
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    body = response.text
+    assert "event: status" in body
+    assert "event: assistant_delta" in body
+    assert "event: done" in body
+    assert body.index("event: status") < body.index("event: done")
+
+
+def test_ai_storage_guard_blocks_new_ai_writes(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "ai_agent_storage_disable_new_writes", True)
+    client = _fresh_client()
+    _, headers = _register(client, _unique_email("ai-storage-guard"))
+
+    response = client.post(
+        "/api/v1/search/ai/sessions",
+        headers=headers,
+        json={"message": "Beijing to Shanghai", "language": "en"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "ai_storage_guard_active"
+
+    search_response = client.post(
+        "/api/v1/search",
+        json={
+            "from_city": "BJ",
+            "to_city": "SH",
+            "travel_date": "2026-06-05",
+            "optimization_target": "balanced",
+        },
+    )
+    assert search_response.status_code == 200

@@ -3,10 +3,13 @@ CLAUDE - COPY.md
 AGENTS.md
 DESIGN.md
 verify-anim.spec.js
+init_new.sql
+routes_data.sql
 
 .claude/
 .superpowers/
 .vscode/
+.VSCodeCounter/
 frontend-prototype/
 design-demo/
 docs/
@@ -16,9 +19,23 @@ __pycache__/
 .venv/
 .venv39/
 .venv310/
+.env
+.env.*
+!.env.example
 .env/
 node_modules/
 dist/
 build/
 test-results/
 test/
+
+backend/data/route_training/raw_csv/*
+backend/data/route_training/artifacts/*
+backend/data/route_training/models/*
+backend/data/route_training/processed/*
+
+!backend/data/route_training/raw_csv/.gitkeep
+!backend/data/route_training/processed/.gitkeep
+!backend/data/route_training/artifacts/.gitkeep
+!backend/data/route_training/models/.gitkeep
+!backend/data/route_training/README.md

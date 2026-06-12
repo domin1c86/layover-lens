@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { City, OptimizationTarget, RoutePlan, SearchRequest } from '../types';
+import type { City, OptimizationTarget, RoutePlan, RouteRecommendation, SearchRequest } from '../types';
 import { cityApi, searchApi } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { useLocale } from '../context/LocaleContext';
@@ -37,6 +37,11 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
   });
   const [optimize, setOptimize] = useState<OptimizationTarget>('balanced');
   const [routes, setRoutes] = useState<RoutePlan[]>([]);
+  const [recommendations, setRecommendations] = useState<RouteRecommendation[]>([]);
+  const [searchId, setSearchId] = useState('');
+  const [lastSearchRequest, setLastSearchRequest] = useState<Partial<SearchRequest>>({});
+  const [routeModelVersion, setRouteModelVersion] = useState('');
+  const [routeDatasetVersion, setRouteDatasetVersion] = useState('');
   const [dataNotice, setDataNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -205,12 +210,19 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
       }
 
       const response = await searchApi.search(request);
-      setRoutes(response.routes);
-      setDataNotice(response.data_notice || '');
+      setRoutes(response.routes || []);
+      setRecommendations(response.recommendations || []);
+      setSearchId(response.search_id || '');
+      setLastSearchRequest(request);
+      setRouteModelVersion(response.route_model_version || '');
+      setRouteDatasetVersion(response.route_dataset_version || '');
+      setDataNotice(response.strategy_notice || response.data_notice || '');
     } catch (err: any) {
       const msg = err?.response?.data?.detail || t('errors.searchFailed');
       setError(msg);
       setDataNotice('');
+      setRecommendations([]);
+      setSearchId('');
     } finally {
       setLoading(false);
     }
@@ -277,10 +289,15 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
           {activeTab === 'search' && (
             <SearchTab
               routes={routes}
+              recommendations={recommendations}
               loading={loading}
               error={error}
               searched={searched}
               dataNotice={dataNotice}
+              searchId={searchId}
+              searchRequest={lastSearchRequest}
+              modelVersion={routeModelVersion}
+              datasetVersion={routeDatasetVersion}
               onQuickSearch={handleQuickSearch}
             />
           )}

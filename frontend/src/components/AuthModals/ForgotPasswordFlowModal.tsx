@@ -13,6 +13,7 @@ interface ForgotPasswordFlowModalProps {
 }
 
 type Step = 'email' | 'notFound' | 'verify' | 'reset' | 'success'
+type VerificationMethod = 'email' | 'totp'
 
 const overlayVariants = {
   hidden: { opacity: 0 },
@@ -46,6 +47,7 @@ export default function ForgotPasswordFlowModal({
   const [countdown, setCountdown] = useState(0)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [verificationMethod, setVerificationMethod] = useState<VerificationMethod>('email')
 
   const isEnglish = lang === 'en'
 
@@ -60,6 +62,7 @@ export default function ForgotPasswordFlowModal({
     setCountdown(0)
     setError('')
     setLoading(false)
+    setVerificationMethod('email')
   }, [isOpen])
 
   useEffect(() => {
@@ -119,7 +122,10 @@ export default function ForgotPasswordFlowModal({
         return
       }
       setEmail(trimmed)
-      await sendCode(trimmed)
+      setVerificationMethod(result.verification_method)
+      if (result.verification_method === 'email') {
+        await sendCode(trimmed)
+      }
       setStep('verify')
     } catch (err) {
       setError(getApiErrorMessage(err, isEnglish ? 'Unable to send verification code.' : '验证码发送失败，请稍后重试。'))
@@ -287,17 +293,29 @@ export default function ForgotPasswordFlowModal({
               {step === 'verify' && (
                 <>
                   <p className="forgot-modal__desc" style={{ margin: 0 }}>
-                    {t('forgotPasswordFlow.codeSent').replace('{{email}}', email)}
+                    {verificationMethod === 'totp'
+                      ? t('forgotPasswordFlow.totpDesc')
+                      : t('forgotPasswordFlow.codeSent').replace('{{email}}', email)}
                   </p>
-                  <p className="settings-panel__hint" style={{ margin: 0 }}>
-                    {isEnglish ? 'Beta code: 000000' : '内测验证码：000000'}
-                  </p>
+                  {verificationMethod === 'email' && (
+                    <p className="settings-panel__hint" style={{ margin: 0 }}>
+                      {isEnglish ? 'Beta code: 000000' : '内测验证码：000000'}
+                    </p>
+                  )}
                   <input
                     className="settings-panel__input"
                     type="text"
+                    inputMode={verificationMethod === 'totp' ? 'numeric' : undefined}
                     value={codeInput}
-                    onChange={(e) => { setCodeInput(e.target.value); setError('') }}
-                    placeholder={t('forgotPasswordFlow.codePlaceholder')}
+                    onChange={(e) => {
+                      setCodeInput(verificationMethod === 'totp'
+                        ? e.target.value.replace(/\D/g, '').slice(0, 6)
+                        : e.target.value)
+                      setError('')
+                    }}
+                    placeholder={verificationMethod === 'totp'
+                      ? t('forgotPasswordFlow.totpPlaceholder')
+                      : t('forgotPasswordFlow.codePlaceholder')}
                     maxLength={12}
                   />
                   {error && <p className="auth-modal__error">{error}</p>}
@@ -311,17 +329,19 @@ export default function ForgotPasswordFlowModal({
                     >
                       {loading ? '...' : t('forgotPasswordFlow.verifyBtn')}
                     </button>
-                    <button
-                      className="settings-panel__btn settings-panel__btn--gray"
-                      onClick={handleResend}
-                      type="button"
-                      disabled={loading || countdown > 0}
-                      style={{ flex: 1 }}
-                    >
-                      {countdown > 0
-                        ? `${t('forgotPasswordFlow.resend')} (${countdown}s)`
-                        : t('forgotPasswordFlow.resend')}
-                    </button>
+                    {verificationMethod === 'email' && (
+                      <button
+                        className="settings-panel__btn settings-panel__btn--gray"
+                        onClick={handleResend}
+                        type="button"
+                        disabled={loading || countdown > 0}
+                        style={{ flex: 1 }}
+                      >
+                        {countdown > 0
+                          ? `${t('forgotPasswordFlow.resend')} (${countdown}s)`
+                          : t('forgotPasswordFlow.resend')}
+                      </button>
+                    )}
                   </div>
                 </>
               )}

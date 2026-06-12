@@ -14,6 +14,7 @@ from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
 import pyotp
+import psycopg
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -57,6 +58,7 @@ AUDIT_EVENTS = {
     "totp_enabled",
     "totp_disabled",
     "totp_login_failed",
+    "totp_email_code_replacement_updated",
 }
 SESSION_DURATION_DELTAS: dict[SessionDuration, Optional[timedelta]] = {
     "day": timedelta(days=1),
@@ -71,9 +73,15 @@ _bearer = HTTPBearer(auto_error=False)
 
 
 class UserServiceError(RuntimeError):
-    def __init__(self, message: str, status_code: int = status.HTTP_400_BAD_REQUEST) -> None:
+    def __init__(
+        self,
+        message: str,
+        status_code: int = status.HTTP_400_BAD_REQUEST,
+        code: Optional[str] = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -323,6 +331,7 @@ class UserService:
                 password_hash TEXT NOT NULL,
                 email_verified BOOLEAN NOT NULL DEFAULT TRUE,
                 totp_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                totp_replaces_email_codes BOOLEAN NOT NULL DEFAULT FALSE,
                 nickname VARCHAR(80),
                 avatar_url VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -410,9 +419,80 @@ class UserService:
                 status VARCHAR(40) NOT NULL,
                 last_message_preview VARCHAR(255) NOT NULL,
                 response_json MEDIUMTEXT NOT NULL,
+                active_run_id VARCHAR(100),
+                active_run_started_at TIMESTAMP NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS ai_agent_usage (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id VARCHAR(40) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_ai_usage_user_time (user_id, created_at),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS ai_agent_requests (
+                request_id VARCHAR(100) PRIMARY KEY,
+                user_id VARCHAR(40) NOT NULL,
+                session_id VARCHAR(80) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_ai_request_session (session_id),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (session_id) REFERENCES ai_search_sessions(session_id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS ai_agent_token_usage (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id VARCHAR(40) NOT NULL,
+                session_id VARCHAR(80) NOT NULL,
+                request_id VARCHAR(100) NOT NULL,
+                call_type VARCHAR(40) NOT NULL,
+                provider VARCHAR(80) NOT NULL,
+                model VARCHAR(120) NOT NULL,
+                input_tokens INT NULL,
+                output_tokens INT NULL,
+                total_tokens INT NULL,
+                cached_input_tokens INT NULL,
+                uncached_input_tokens INT NULL,
+                cache_hit_ratio DECIMAL(10,6) NULL,
+                raw_usage_json TEXT NOT NULL,
+                usage_unavailable BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_ai_token_user_time (user_id, created_at),
+                INDEX idx_ai_token_provider_time (provider, model, created_at),
+                INDEX idx_ai_token_session (session_id),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (session_id) REFERENCES ai_search_sessions(session_id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS ai_agent_user_memory (
+                user_id VARCHAR(40) NOT NULL,
+                memory_key VARCHAR(120) NOT NULL,
+                memory_value_json TEXT NOT NULL,
+                confidence DECIMAL(5,4) NOT NULL DEFAULT 0.6000,
+                evidence_count INT NOT NULL DEFAULT 1,
+                source VARCHAR(40) NOT NULL DEFAULT 'agent_rule',
+                last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, memory_key),
+                INDEX idx_ai_memory_user_updated (user_id, updated_at),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS ai_checkpoint_deletions (
+                session_id VARCHAR(80) PRIMARY KEY,
+                user_id VARCHAR(40) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP NULL,
+                last_error VARCHAR(255)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """,
             """
@@ -469,7 +549,21 @@ class UserService:
                 cursor.execute(statement)
             self._ensure_mysql_column(cursor, "users", "email_verified", "BOOLEAN NOT NULL DEFAULT TRUE AFTER password_hash")
             self._ensure_mysql_column(cursor, "users", "totp_enabled", "BOOLEAN NOT NULL DEFAULT FALSE AFTER email_verified")
+            self._ensure_mysql_column(
+                cursor,
+                "users",
+                "totp_replaces_email_codes",
+                "BOOLEAN NOT NULL DEFAULT FALSE AFTER totp_enabled",
+            )
             self._ensure_mysql_column(cursor, "auth_tokens", "expires_at", "TIMESTAMP NULL AFTER created_at")
+            self._ensure_mysql_column(cursor, "ai_search_sessions", "active_run_id", "VARCHAR(100) NULL AFTER response_json")
+            self._ensure_mysql_column(
+                cursor,
+                "ai_search_sessions",
+                "active_run_started_at",
+                "TIMESTAMP NULL AFTER active_run_id",
+            )
+            cursor.execute("UPDATE ai_search_sessions SET response_json = '{}' WHERE response_json <> '{}'")
             connection.commit()
             return True
         except Exception:
@@ -612,6 +706,7 @@ class UserService:
                                 email=email,
                                 email_verified=True,
                                 totp_enabled=False,
+                                totp_replaces_email_codes=False,
                                 nickname=initial_nickname,
                                 avatar_url=None,
                                 created_at=created_at,
@@ -659,6 +754,7 @@ class UserService:
                         email=email,
                         email_verified=True,
                         totp_enabled=False,
+                        totp_replaces_email_codes=False,
                         nickname=initial_nickname,
                         avatar_url=None,
                         created_at=created_at,
@@ -908,7 +1004,8 @@ class UserService:
                 cursor = connection.cursor(dictionary=True)
                 cursor.execute(
                     """
-                    SELECT u.id, u.username, u.email, u.email_verified, u.totp_enabled, u.nickname, u.avatar_url, u.created_at
+                    SELECT u.id, u.username, u.email, u.email_verified, u.totp_enabled,
+                           u.totp_replaces_email_codes, u.nickname, u.avatar_url, u.created_at
                     FROM auth_tokens t
                     JOIN users u ON u.id = t.user_id
                     WHERE t.token_hash = %s
@@ -1247,13 +1344,22 @@ class UserService:
             with self._connect() as connection:
                 cursor = connection.cursor()
                 cursor.execute("DELETE FROM user_totp_settings WHERE user_id = %s", (user_id,))
-                cursor.execute("UPDATE users SET totp_enabled = FALSE WHERE id = %s", (user_id,))
+                cursor.execute(
+                    "UPDATE users SET totp_enabled = FALSE, totp_replaces_email_codes = FALSE WHERE id = %s",
+                    (user_id,),
+                )
+                cursor.execute("DELETE FROM password_reset_tokens WHERE email = %s", (profile.email,))
                 connection.commit()
         else:
             with self._lock:
                 self._totp_settings.pop(user_id, None)
                 profile = self._users[user_id]["profile"]
-                self._users[user_id]["profile"] = profile.model_copy(update={"totp_enabled": False})
+                self._users[user_id]["profile"] = profile.model_copy(
+                    update={"totp_enabled": False, "totp_replaces_email_codes": False}
+                )
+                reset_record = self._reset_by_email.pop(profile.email, None)
+                if reset_record and reset_record.get("reset_token"):
+                    self._reset_tokens.pop(reset_record["reset_token"], None)
         self._record_audit_event(
             event_type="totp_disabled",
             user_id=user_id,
@@ -1268,6 +1374,42 @@ class UserService:
             return False
         secret = _decrypt_totp_secret(setting["secret_encrypted"])
         return bool(pyotp.TOTP(secret).verify(code.strip(), valid_window=1))
+
+    def update_totp_email_code_replacement(
+        self,
+        user_id: str,
+        *,
+        enabled: bool,
+        request: Optional[Request] = None,
+    ) -> UserProfile:
+        profile = self.get_profile(user_id)
+        if enabled and not profile.totp_enabled:
+            raise UserServiceError("TOTP must be enabled first.", status.HTTP_409_CONFLICT)
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    "UPDATE users SET totp_replaces_email_codes = %s WHERE id = %s",
+                    (enabled, user_id),
+                )
+                cursor.execute("DELETE FROM password_reset_tokens WHERE email = %s", (profile.email,))
+                connection.commit()
+            updated = self.get_profile(user_id)
+        else:
+            with self._lock:
+                updated = profile.model_copy(update={"totp_replaces_email_codes": enabled})
+                self._users[user_id]["profile"] = updated
+                reset_record = self._reset_by_email.pop(profile.email, None)
+                if reset_record and reset_record.get("reset_token"):
+                    self._reset_tokens.pop(reset_record["reset_token"], None)
+        self._record_audit_event(
+            event_type="totp_email_code_replacement_updated",
+            user_id=user_id,
+            request=request,
+            success=True,
+            metadata={"enabled": enabled},
+        )
+        return updated
 
     def _get_totp_setting(self, user_id: str) -> Optional[dict]:
         if self._mysql_available:
@@ -1291,13 +1433,26 @@ class UserService:
             with self._connect() as connection:
                 cursor = connection.cursor()
                 cursor.execute("UPDATE user_totp_settings SET enabled = %s WHERE user_id = %s", (enabled, user_id))
-                cursor.execute("UPDATE users SET totp_enabled = %s WHERE id = %s", (enabled, user_id))
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET totp_enabled = %s,
+                        totp_replaces_email_codes = CASE WHEN %s THEN totp_replaces_email_codes ELSE FALSE END
+                    WHERE id = %s
+                    """,
+                    (enabled, enabled, user_id),
+                )
                 connection.commit()
             return
         with self._lock:
             self._totp_settings[user_id]["enabled"] = enabled
             profile = self._users[user_id]["profile"]
-            self._users[user_id]["profile"] = profile.model_copy(update={"totp_enabled": enabled})
+            self._users[user_id]["profile"] = profile.model_copy(
+                update={
+                    "totp_enabled": enabled,
+                    "totp_replaces_email_codes": profile.totp_replaces_email_codes if enabled else False,
+                }
+            )
 
     def verify_current_email(self, user_id: str, *, verification_token: str) -> UserProfile:
         profile = self.get_profile(user_id)
@@ -1440,10 +1595,20 @@ class UserService:
         profile, _ = self._get_user_with_password(_normalize_email(email))
         return profile is not None
 
-    def send_reset_code(self, email: str) -> int:
+    def get_password_reset_method(self, email: str) -> tuple[bool, str]:
+        profile, _ = self._get_user_with_password(_normalize_email(email))
+        if not profile:
+            return False, "email"
+        use_totp = profile.totp_enabled and profile.totp_replaces_email_codes
+        return True, "totp" if use_totp else "email"
+
+    def send_reset_code(self, email: str) -> tuple[int, str]:
         email = _normalize_email(email)
-        if not self.check_email(email):
+        registered, verification_method = self.get_password_reset_method(email)
+        if not registered:
             raise UserServiceError("Email is not registered.", status.HTTP_404_NOT_FOUND)
+        if verification_method == "totp":
+            return 0, "totp"
         expires_at = _utcnow() + timedelta(seconds=RESET_CODE_TTL_SECONDS)
         if self._mysql_available:
             with self._connect() as connection:
@@ -1461,12 +1626,43 @@ class UserService:
         else:
             with self._lock:
                 self._reset_by_email[email] = {"code": RESET_CODE, "expires_at": expires_at}
-        return RESET_CODE_TTL_SECONDS
+        return RESET_CODE_TTL_SECONDS, "email"
 
     def verify_reset_code(self, *, email: str, code: str) -> tuple[bool, Optional[str]]:
         email = _normalize_email(email)
+        profile, _ = self._get_user_with_password(email)
+        if not profile:
+            return False, None
+        self._check_rate_limit("password_reset_verify:email", email, limit=8)
         reset_token = secrets.token_urlsafe(32)
         now = _utcnow()
+        if profile.totp_enabled and profile.totp_replaces_email_codes:
+            if not self.verify_totp_code(profile.id, code):
+                return False, None
+            expires_at = now + timedelta(seconds=TOTP_CHALLENGE_TTL_SECONDS)
+            if self._mysql_available:
+                with self._connect() as connection:
+                    cursor = connection.cursor()
+                    cursor.execute(
+                        """
+                        INSERT INTO password_reset_tokens (email, code, expires_at, reset_token, verified_at)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE code = VALUES(code), expires_at = VALUES(expires_at),
+                            reset_token = VALUES(reset_token), verified_at = VALUES(verified_at)
+                        """,
+                        (email, "totp", expires_at, reset_token, now),
+                    )
+                    connection.commit()
+            else:
+                with self._lock:
+                    self._reset_by_email[email] = {
+                        "code": "totp",
+                        "expires_at": expires_at,
+                        "reset_token": reset_token,
+                        "verified_at": now,
+                    }
+                    self._reset_tokens[reset_token] = {"email": email, "expires_at": expires_at}
+            return True, reset_token
         if self._mysql_available:
             with self._connect() as connection:
                 cursor = connection.cursor(dictionary=True)
@@ -1760,7 +1956,6 @@ class UserService:
         title = (title or response.summary or "AI Search").strip()[:120] or "AI Search"
         last_preview = response.conversation[-1].content[:120] if response.conversation else ""
         now = _utcnow()
-        payload = response.model_dump(mode="json")
         if self._mysql_available:
             with self._connect() as connection:
                 cursor = connection.cursor()
@@ -1784,7 +1979,7 @@ class UserService:
                         title,
                         response.status.value,
                         last_preview,
-                        _json_dump(payload),
+                        "{}",
                         now,
                         now,
                     ),
@@ -1805,6 +2000,220 @@ class UserService:
                 "created_at": created_at,
                 "updated_at": now,
             }
+
+    def assert_ai_session_owner(self, user_id: str, session_id: str) -> None:
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    "SELECT 1 FROM ai_search_sessions WHERE session_id = %s AND user_id = %s",
+                    (session_id, user_id),
+                )
+                if cursor.fetchone() is None:
+                    raise UserServiceError("AI session not found.", status.HTTP_404_NOT_FOUND)
+            return
+        if session_id not in self._ai_sessions.get(user_id, {}):
+            raise UserServiceError("AI session not found.", status.HTTP_404_NOT_FOUND)
+
+    def check_ai_agent_quota(self, user_id: str) -> None:
+        now = _utcnow()
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    "SELECT COUNT(*) FROM ai_agent_usage WHERE user_id = %s AND created_at >= %s",
+                    (user_id, now - timedelta(minutes=1)),
+                )
+                if int(cursor.fetchone()[0]) >= settings.ai_agent_minute_turn_limit:
+                    raise UserServiceError("AI request limit reached. Please wait before trying again.", status.HTTP_429_TOO_MANY_REQUESTS)
+                cursor.execute(
+                    "SELECT COUNT(*) FROM ai_agent_usage WHERE user_id = %s AND created_at >= %s",
+                    (user_id, now - timedelta(days=1)),
+                )
+                if int(cursor.fetchone()[0]) >= settings.ai_agent_daily_turn_limit:
+                    raise UserServiceError("Daily AI request limit reached.", status.HTTP_429_TOO_MANY_REQUESTS)
+                cursor.execute("INSERT INTO ai_agent_usage (user_id) VALUES (%s)", (user_id,))
+                connection.commit()
+            return
+        self._check_rate_limit(
+            "ai_agent_minute:user",
+            user_id,
+            limit=settings.ai_agent_minute_turn_limit,
+            window_seconds=60,
+        )
+
+    def check_ai_session_capacity(self, user_id: str) -> None:
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute("SELECT COUNT(*) FROM ai_search_sessions WHERE user_id = %s", (user_id,))
+                if int(cursor.fetchone()[0]) >= settings.ai_agent_max_sessions:
+                    raise UserServiceError("AI session limit reached.", status.HTTP_409_CONFLICT)
+            return
+        if len(self._ai_sessions.get(user_id, {})) >= settings.ai_agent_max_sessions:
+            raise UserServiceError("AI session limit reached.", status.HTTP_409_CONFLICT)
+
+    def check_ai_storage_available(self) -> None:
+        if settings.ai_agent_storage_disable_new_writes:
+            raise UserServiceError(
+                "AI session storage is temporarily unavailable.",
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "ai_storage_guard_active",
+            )
+        limit_mb = settings.ai_agent_storage_soft_limit_mb
+        if limit_mb <= 0 or not settings.langgraph_checkpoint_database_url:
+            return
+        try:
+            with psycopg.connect(settings.langgraph_checkpoint_database_url, connect_timeout=3) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_database_size(current_database())")
+                    size_bytes = int(cursor.fetchone()[0])
+        except Exception:
+            return
+        if size_bytes >= limit_mb * 1024 * 1024:
+            raise UserServiceError(
+                "AI session storage is temporarily unavailable.",
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "ai_storage_guard_active",
+            )
+
+    def reserve_ai_request(self, user_id: str, session_id: str, request_id: str) -> bool:
+        if self._mysql_available:
+            try:
+                with self._connect() as connection:
+                    cursor = connection.cursor()
+                    cursor.execute(
+                        "INSERT INTO ai_agent_requests (request_id, user_id, session_id) VALUES (%s, %s, %s)",
+                        (request_id, user_id, session_id),
+                    )
+                    connection.commit()
+                return True
+            except Exception:
+                return False
+        key = f"ai_request:{request_id}"
+        with self._lock:
+            if key in self._rate_limits:
+                return False
+            self._rate_limits[key] = [_utcnow()]
+        return True
+
+    def acquire_ai_session_run(self, user_id: str, session_id: str, run_id: str) -> None:
+        self.assert_ai_session_owner(user_id, session_id)
+        if not self._mysql_available:
+            return
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                UPDATE ai_search_sessions
+                SET active_run_id = %s, active_run_started_at = %s
+                WHERE session_id = %s AND user_id = %s
+                  AND (active_run_id IS NULL OR active_run_started_at < %s)
+                """,
+                (run_id, _utcnow(), session_id, user_id, _utcnow() - timedelta(minutes=2)),
+            )
+            if cursor.rowcount == 0:
+                raise UserServiceError("This AI session already has a request in progress.", status.HTTP_409_CONFLICT)
+            connection.commit()
+
+    def release_ai_session_run(self, user_id: str, session_id: str, run_id: str) -> None:
+        if not self._mysql_available:
+            return
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                UPDATE ai_search_sessions
+                SET active_run_id = NULL, active_run_started_at = NULL
+                WHERE session_id = %s AND user_id = %s AND active_run_id = %s
+                """,
+                (session_id, user_id, run_id),
+            )
+            connection.commit()
+
+    def queue_ai_checkpoint_deletion(self, user_id: str, session_id: str, error: str = "") -> None:
+        if not self._mysql_available:
+            return
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                INSERT INTO ai_checkpoint_deletions (session_id, user_id, last_error)
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE last_error = VALUES(last_error), completed_at = NULL
+                """,
+                (session_id, user_id, error[:255]),
+            )
+            connection.commit()
+
+    def list_user_ai_session_ids(self, user_id: str) -> list[str]:
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute("SELECT session_id FROM ai_search_sessions WHERE user_id = %s", (user_id,))
+                return [str(row[0]) for row in cursor.fetchall()]
+        return list(self._ai_sessions.get(user_id, {}).keys())
+
+    def list_user_ids_with_ai_sessions(self) -> list[str]:
+        if self._mysql_available:
+            with self._connect() as connection:
+                cursor = connection.cursor()
+                cursor.execute("SELECT DISTINCT user_id FROM ai_search_sessions")
+                return [str(row[0]) for row in cursor.fetchall()]
+        return list(self._ai_sessions.keys())
+
+    def list_expired_ai_session_ids(self, user_id: str) -> list[str]:
+        if not self._mysql_available:
+            return []
+        with self._connect() as connection:
+            cursor = connection.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT sessions.session_id, sessions.updated_at, preferences.chat_retention_days
+                FROM ai_search_sessions AS sessions
+                LEFT JOIN user_preferences AS preferences ON preferences.user_id = sessions.user_id
+                WHERE sessions.user_id = %s
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+        now = _utcnow()
+        expired = []
+        for row in rows:
+            retention_days = row.get("chat_retention_days")
+            retention = settings.ai_chat_retention_days if retention_days is None else int(retention_days)
+            if retention < 0:
+                continue
+            if row["updated_at"] <= now - timedelta(days=retention):
+                expired.append(str(row["session_id"]))
+        return expired
+
+    def list_pending_ai_checkpoint_deletions(self, user_id: str) -> list[str]:
+        if not self._mysql_available:
+            return []
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                SELECT session_id FROM ai_checkpoint_deletions
+                WHERE user_id = %s AND completed_at IS NULL
+                ORDER BY created_at
+                LIMIT 20
+                """,
+                (user_id,),
+            )
+            return [str(row[0]) for row in cursor.fetchall()]
+
+    def complete_ai_checkpoint_deletion(self, session_id: str) -> None:
+        if not self._mysql_available:
+            return
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                "UPDATE ai_checkpoint_deletions SET completed_at = %s, last_error = NULL WHERE session_id = %s",
+                (_utcnow(), session_id),
+            )
+            connection.commit()
 
     def list_ai_sessions(self, user_id: str) -> list[AISessionSummary]:
         if self._mysql_available:
@@ -1965,7 +2374,7 @@ class UserService:
             with self._connect() as connection:
                 cursor = connection.cursor(dictionary=True)
                 cursor.execute(
-                    "SELECT id, username, email, password_hash, email_verified, totp_enabled, nickname, avatar_url, created_at FROM users WHERE email = %s",
+                    "SELECT id, username, email, password_hash, email_verified, totp_enabled, totp_replaces_email_codes, nickname, avatar_url, created_at FROM users WHERE email = %s",
                     (email,),
                 )
                 row = cursor.fetchone()
@@ -1984,7 +2393,7 @@ class UserService:
             with self._connect() as connection:
                 cursor = connection.cursor(dictionary=True)
                 cursor.execute(
-                    "SELECT id, username, email, email_verified, totp_enabled, nickname, avatar_url, created_at FROM users WHERE id = %s",
+                    "SELECT id, username, email, email_verified, totp_enabled, totp_replaces_email_codes, nickname, avatar_url, created_at FROM users WHERE id = %s",
                     (user_id,),
                 )
                 row = cursor.fetchone()
@@ -2009,6 +2418,7 @@ class UserService:
             email=row["email"],
             email_verified=bool(row.get("email_verified", True)),
             totp_enabled=bool(row.get("totp_enabled", False)),
+            totp_replaces_email_codes=bool(row.get("totp_replaces_email_codes", False)),
             nickname=row.get("nickname"),
             avatar_url=row.get("avatar_url"),
             created_at=row["created_at"],

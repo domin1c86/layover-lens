@@ -1,182 +1,258 @@
+<p align="right">
+  <a href="./README.md">中文</a> | English
+</p>
+
 <p align="center">
-  <h1 align="center">✈️🚄 Layover Lens（中转助手）</h1>
-  <p align="center"><em>Smart Flight & Train Transfer Search Engine</em></p>
+  <h1 align="center">Layover Lens</h1>
+  <p align="center"><em>A multimodal route strategy recommendation system for intercity travel in China</em></p>
 </p>
 
 ---
 
-**Layover Lens** is a multi-modal transit search platform that finds optimal transfer routes between cities by combining flights and trains. Rather than searching each platform individually, users get a unified view of the best connections — optimized by price, duration, number of transfers, or a weighted balanced score.
+Layover Lens is an open-source project for validating city-level transportation strategy recommendations. The current version does not promise realtime fares, realtime inventory, or purchasable schedules. Instead, it returns route strategies such as `Beijing -> Nanjing -> Chengdu`, with estimated cost, estimated duration, service density, confidence, and external ticket-search entry points for each segment.
+
+The goal is to validate the search experience, C++ strategy algorithm, AI parameter collection, user feedback, manual annotation, and future training loop first. If realtime train or flight providers are added later, the segment data provider and training data source can be replaced without rebuilding the frontend or API contract.
+
+## Current Status
+
+- **Route strategy recommendations**: default search returns city-path strategies instead of detailed train or flight schedules.
+- **C++ algorithm core**: traffic graph construction, candidate retrieval, segment estimation, direct-price guardrails, and linear ranking run in C++17 through pybind11.
+- **Simple linear model**: the current model artifact is `linear_ranker_v1.json`; it controls C++ ranking weights and does not yet update online from user feedback.
+- **Mock / historical data modes**: mock data is used when no training artifact is available; historical CSV/XLSX artifacts can drive graph features and model weights.
+- **AI conversational search**: a LangGraph-based agent collects fields such as origin, destination, and date, then executes strategy search after user confirmation.
+- **Agent tools**: date, weather, and real POI tools. POI search uses Amap first and Baidu as fallback, with a lightweight RAG cache.
+- **Account security**: real backend registration and login, HttpOnly cookie sessions, CSRF, device management, TOTP 2FA, and optional 2FA replacement for email verification codes.
+- **Frontend experience**: regular search, AI search, favorites, local avatars, theme switching, Chinese/English UI, route feedback, and external ticket-link warnings.
+- **Feedback-loop foundation**: route feedback can be submitted anonymously or by logged-in users and stored in MySQL for later annotation and training export.
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────┐
-│  Frontend  React 18 + TypeScript + Vite         │
-│            Dark mode · i18n (zh/en) · motion    │
-│            Port 3000                             │
-├──────────────────────────────────────────────────┤
-│  API       Python FastAPI                        │
-│            Pydantic validation · /api/v1/*       │
-│            Port 8000                             │
-├──────────────────────────────────────────────────┤
-│  Planner   C++17 (pybind11) ← auto-detect → Python│
-│            Multi-objective graph search           │
-├──────────────────────────────────────────────────┤
-│  Data      MySQL 8.0 · Mock adapter ·            │
-│            795 seed routes (360 flights +         │
-│            435 trains) over 3 days               │
-├──────────────────────────────────────────────────┤
-│  AI        DeepSeek LLM · Multi-turn session     │
-│            Natural language → structured search   │
-└──────────────────────────────────────────────────┘
-```
+```text
+React 18 + TypeScript + Vite frontend (:3000)
+  -> Axios API client
+  -> Nginx / Vite proxy for /api
 
-## Key Features
+FastAPI backend (:8000)
+  -> auth / user / cities / search routers
+  -> SearchService calls the C++ route strategy planner
+  -> LangGraph Agent + tools + checkpoint storage
 
-- **Multi-Objective Route Search** — Optimize for cheapest price, shortest time, fewest transfers, or a weighted balanced recommendation
-- **Multi-Modal Transfers** — Mix flights and trains in a single journey (e.g., fly Beijing → Shanghai, then train to Hangzhou)
-- **Rich Filtering** — Time range, max price/duration, preferred transport type, excluded cities, required transfer cities, overnight flag
-- **AI-Powered Natural Language Search** — Type "Find me the fastest way from Beijing to Kunming next Tuesday" and let the AI extract structured search parameters across multiple conversation turns
-- **Platform Labels** — Each leg shows its booking source (Railway 12306, Ctrip, Qunar, Fliggy)
-- **Favorites** — Save and manage preferred routes with local persistence
-- **Dark Mode & i18n** — Full Chinese/English support with theme-aware design tokens
+C++ planner module
+  -> TrafficGraphBuilder
+  -> CandidateRetriever
+  -> RankingModel
+  -> pybind11 bindings
 
-## Quick Start (Docker)
+MySQL 8.0
+  -> users, sessions, devices, preferences, favorites
+  -> mock catalog, POI cache, route feedback, training metadata
 
-```bash
-git clone <repo-url> && cd layover-lens
-docker compose up --build
-# Frontend: http://localhost:3000    Backend API: http://localhost:8000/docs
+PostgreSQL
+  -> LangGraph checkpoint storage
 ```
 
-The Docker setup starts three services:
-- **frontend** (Nginx serving static files + API proxy)
-- **backend** (FastAPI with C++ route planner)
-- **mysql** (Seed data with 40 cities, 80+ stations, 795 routes)
+## Quick Start
 
-To rebuild after making changes:
-```bash
-docker compose up --build          # full rebuild
-docker compose restart backend     # restart single service
+```powershell
+git clone <repo-url>
+cd layover-lens
+docker compose up --build -d backend frontend
 ```
 
-To reset the database:
-```bash
-docker compose down -v && docker compose up --build
+URLs:
+
+- Frontend: `http://localhost:3000`
+- Backend Swagger: `http://localhost:8000/docs`
+- Backend health: `http://localhost:8000/health`
+
+Useful commands:
+
+```powershell
+docker compose ps
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose exec -T backend python -m pytest tests/ -q
 ```
+
+Avoid running `docker compose down -v` unless you intentionally want to delete database volumes.
 
 ## Local Development
 
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev          # Vite dev server on port 3000, proxies /api → localhost:8000
-npm run test         # Vitest unit tests
-npm run build        # TypeScript check + production build
-```
-
-When running the backend in Docker and the frontend locally:
-```bash
-VITE_PROXY_TARGET=http://localhost:8000 npm run dev
-```
-
 ### Backend
 
-```bash
+Local backend development uses the Python 3.10.11 `.venv310` virtual environment:
+
+```powershell
 cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+.\.venv310\Scripts\python.exe -m pytest tests -q
+.\.venv310\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
-For faster planning, build the C++ module:
-```bash
-cd backend/planner && mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build .
+Rebuild the C++ planner after changing `backend/planner/`:
+
+```powershell
+cd backend\planner
+cmake -S . -B build
+cmake --build build --config Release
 ```
 
-### Backend Tests
+### Frontend
 
-```bash
-docker compose exec backend python -m pytest tests/ -v
+```powershell
+cd frontend
+npm install
+npm run dev
+npm run test
+npm run build
 ```
 
-## API Endpoints
+All user-facing frontend text should live in `frontend/src/locales`, with mirrored Chinese and English keys.
+
+## Route Training Data and Model
+
+Training data lives under:
+
+```text
+backend/data/route_training/
+  raw_csv/       # raw CSV/XLSX files, ignored by Git by default
+  artifacts/     # aggregated traffic graph artifacts
+  models/        # linear ranker weight files
+```
+
+The online search needs both artifacts:
+
+- `backend/data/route_training/artifacts/route_edges_v1.json.gz`
+- `backend/data/route_training/models/linear_ranker_v1.json`
+
+Build and inspect:
+
+```powershell
+cd backend
+.\.venv310\Scripts\python.exe -m app.cli.route_training init
+.\.venv310\Scripts\python.exe -m app.cli.route_training status
+.\.venv310\Scripts\python.exe -m app.cli.route_training build
+.\.venv310\Scripts\python.exe -m app.cli.route_training validate
+.\.venv310\Scripts\python.exe -m app.cli.route_training evaluate
+```
+
+With `ROUTE_DATASET_MODE=auto`, the service uses a historical artifact when available and falls back to mock when it is missing. You can also force:
+
+- `ROUTE_DATASET_MODE=mock`
+- `ROUTE_DATASET_MODE=historical`
+
+Generated training artifacts are ignored by `.gitignore` by default. If you want the open-source version to run with the historical model out of the box, force-add the compact artifact and model, but do not commit raw CSV/XLSX files:
+
+```powershell
+git add -f backend/data/route_training/artifacts/route_edges_v1.json.gz
+git add -f backend/data/route_training/models/linear_ranker_v1.json
+```
+
+If artifacts become large later, prefer GitHub Releases, Git LFS, DVC, or object storage.
+
+## Feedback and Self-Improvement Boundary
+
+The project can already collect route feedback:
+
+- Route-card feedback from regular search.
+- AI-search experience feedback.
+- Anonymous and logged-in feedback.
+- Four star ratings, text comments, adopted route selections, clicked provider, search request snapshot, and recommendation snapshot.
+- `dataset_version` and `model_version` are stored for model-performance tracing.
+
+The project does not yet update online model parameters directly from user feedback. The recommended training loop is:
+
+```text
+route_feedback / route_feedback_annotations
+  -> clean valid samples
+  -> generate manual or rule-based labels
+  -> train a candidate model offline
+  -> compare with evaluate
+  -> manually approve and publish
+```
+
+Small feedback sets are noisy and should not automatically change production weights. The first version should remain offline-trained, offline-evaluated, manually published, and rollback-friendly.
+
+## API List
+
+Full API documentation: [description/api-interface-list.md](./description/api-interface-list.md).
+
+Common endpoints:
 
 | Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/v1/search` | Multi-objective route search |
-| `GET` | `/api/v1/cities` | City autocomplete by keyword |
-| `POST` | `/api/v1/search/ai/sessions` | Start AI search session |
-| `POST` | `/api/v1/search/ai/sessions/{id}/messages` | Send message in AI session |
-| `POST` | `/api/v1/search/ai/sessions/{id}/confirm` | Confirm & execute AI search |
-| `GET` | `/api/v1/search/ai/sessions/{id}` | Get AI session state |
-| `POST` | `/api/v1/auth/login` | User login |
-| `POST` | `/api/v1/auth/register` | User registration |
-| `GET` | `/api/v1/user/profile` | Get current user profile |
-| `PATCH` | `/api/v1/user/profile` | Update user profile |
-| `GET` | `/api/v1/user/preferences` | Get user preferences |
-| `PUT` | `/api/v1/user/preferences` | Update user preferences |
-| `POST` | `/api/v1/favorites` | Save a route to favorites |
-| `GET` | `/api/v1/favorites` | List saved favorites |
-| `DELETE` | `/api/v1/favorites/{id}` | Remove a favorite |
-| `GET` | `/health` | Service health & backend info |
+| --- | --- | --- |
+| `GET` | `/health` | Service, data source, planner, AI, POI, and training artifact summary |
+| `GET` | `/api/v1/cities` | City list and keyword filtering |
+| `POST` | `/api/v1/search` | Route strategy search |
+| `POST` | `/api/v1/search/feedback` | Route feedback, supports anonymous submission |
+| `GET` | `/api/v1/search/feedback/annotated` | Export annotated feedback samples |
+| `POST` | `/api/v1/search/ai/sessions/stream` | Create an AI session and stream response |
+| `POST` | `/api/v1/search/ai/sessions/{session_id}/confirm/stream` | Confirm AI search and stream results |
+| `GET` | `/api/v1/search/ai/memory` | Read Agent long-term memory |
+| `DELETE` | `/api/v1/search/ai/memory/{memory_key}` | Delete one Agent memory item |
+| `POST` | `/api/v1/auth/register` | Register and set session cookies |
+| `POST` | `/api/v1/auth/login` | Login, may return a TOTP challenge |
+| `POST` | `/api/v1/auth/logout` | Logout |
+| `GET` | `/api/v1/user/profile` | Current user profile |
+| `PUT` | `/api/v1/user/profile` | Update user profile |
+| `GET` | `/api/v1/user/devices` | Login device list |
+| `POST` | `/api/v1/user/totp/setup` | Create TOTP setup data |
+| `POST` | `/api/v1/user/totp/enable` | Enable TOTP |
+| `POST` | `/api/v1/user/totp/disable` | Disable TOTP |
 
-Full API spec: [description/api-interface-list.md](description/api-interface-list.md)
-
-## Configuration
-
-Key environment variables (set via `docker-compose.yml` or `.env`):
+## Key Environment Variables
 
 | Variable | Default | Description |
-|----------|---------|-------------|
-| `DATA_SOURCE` | `mock` | Data adapter: `mock` (MySQL + in-memory fallback) or `mysql` |
-| `ROUTE_PLANNER_BACKEND` | `auto` | Planner impl: `python`, `cpp`, or `auto` |
-| `DEEPSEEK_API_KEY` | — | DeepSeek API key for AI search |
-| `DEEPSEEK_MODEL` | `deepseek-v4-flash` | Model name for AI search |
-| `DATABASE_URL` | — | MySQL connection string |
-| `CORS_ORIGINS` | `["http://localhost:3000", ...]` | Allowed CORS origins |
-| `MAX_ROUTES` | `8` | Max results per search |
-| `DEFAULT_MAX_TRANSFERS` | `2` | Max transfers per route |
+| --- | --- | --- |
+| `APP_ENV` | `development` | `development` or `production` |
+| `DATABASE_URL` | set in compose | MySQL connection string |
+| `ROUTE_PLANNER_BACKEND` | `auto` | `cpp`, `python`, or `auto` |
+| `ROUTE_TRAINING_DATA_DIR` | `backend/data/route_training` | CSV, artifact, and model directory |
+| `ROUTE_DATASET_MODE` | `auto` | `auto`, `mock`, or `historical` |
+| `SESSION_COOKIE_SECURE` | `false` locally | Should be `true` behind HTTPS in production |
+| `CSRF_SECRET` | dev default | Must be replaced in production |
+| `TOTP_ENCRYPTION_SECRET` | dev default | Must be replaced in production |
+| `VITE_AI_SEARCH_ENABLED` | `false` | Whether the frontend AI search entry is enabled |
+| `AI_MODEL_PROVIDER` | `deepseek` | Agent model provider |
+| `DEEPSEEK_API_KEY` | empty | DeepSeek API key |
+| `AI_AGENT_TURN_MODE` | `single` | Single-call or dual-call agent mode |
+| `LANGGRAPH_CHECKPOINT_DATABASE_URL` | set in compose | LangGraph PostgreSQL checkpoint storage |
+| `AMAP_WEB_SERVICE_KEY` | empty | Amap Web Service key |
+| `BAIDU_MAP_WEB_SERVICE_AK` | empty | Baidu Map Web Service AK |
+| `AI_AGENT_POI_DUAL_VERIFY_ENABLED` | `false` | Enables Amap/Baidu dual-source POI verification |
 
-See [backend/app/config.py](backend/app/config.py) for all available settings.
+See [backend/app/config.py](./backend/app/config.py) for the full configuration list.
 
 ## Project Structure
 
-```
-layover-lens/
-├── frontend/            React 18 + TypeScript + Vite
-│   ├── src/
-│   │   ├── components/  SearchTab, AiSearchTab, FavoritesTab, SettingsModal, TopNav, Footer
-│   │   ├── context/     ThemeContext, LocaleContext, FavoritesContext
-│   │   ├── locales/     zh/en translation dictionary
-│   │   ├── services/    Axios API client
-│   │   ├── styles/      Design tokens, reset, dark mode overrides
-│   │   └── types/       TypeScript interfaces mirroring backend schemas
-│   └── nginx.conf       Production static serving + API proxy
-├── backend/             Python FastAPI
-│   ├── app/
-│   │   ├── routers/     Search, cities, auth, user, bookings
-│   │   ├── services/    Search engine, AI agent, route planner
-│   │   ├── data_source/ Pluggable adapters (MySQL, in-memory)
-│   │   ├── config.py    pydantic-settings configuration
-│   │   └── schemas.py   API request/response models
-│   ├── planner/         C++17 route planner (pybind11)
-│   └── tests/
-├── database/            MySQL schema + seed data
-├── description/         Documentation
-└── docker-compose.yml   3-service orchestration
+```text
+frontend/                         React + TypeScript + Vite
+backend/app/                      FastAPI routers, services, schemas, agents
+backend/planner/                  C++17 planner and pybind11 bindings
+backend/data/route_training/      training data, artifacts, model weights
+database/init.sql                 MySQL initialization script
+description/                      design and API documentation
+docker-compose.yml                local orchestration
 ```
 
-## Tech Stack
+## Tests
 
-**Frontend:** React 18 · TypeScript · Vite · motion (framer-motion) · Axios · Vitest  
-**Backend:** Python · FastAPI · Pydantic · MySQL Connector · DeepSeek API · pybind11  
-**Database:** MySQL 8.0 · 40 cities · 80+ stations · 795 seed routes  
-**Infrastructure:** Docker Compose · Nginx · CMake (C++ planner)
+```powershell
+cd backend
+.\.venv310\Scripts\python.exe -m pytest tests -q
+
+cd ..\frontend
+npm run test
+npm run build
+
+cd ..
+docker compose up --build -d backend frontend
+docker compose exec -T backend python -m pytest tests/ -q
+```
+
+## Data and Disclaimer
+
+Current route strategies are based on mock data or aggregated offline CSV/XLSX estimates. They do not represent realtime fares, realtime inventory, or purchasable schedules. External platform buttons are only segment-search entry points. Final prices, inventory, refund/change policies, and booking rules are controlled by the external platforms.
 
 ## License
 
-This project is for demonstration purposes.
+This project is currently intended for learning, demonstration, and beta validation.

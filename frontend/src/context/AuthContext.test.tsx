@@ -26,6 +26,7 @@ const profile: UserProfile = {
   email: 'tester@example.com',
   email_verified: true,
   totp_enabled: false,
+  totp_replaces_email_codes: false,
   nickname: null,
   avatar_url: null,
   created_at: '2026-01-01T00:00:00',

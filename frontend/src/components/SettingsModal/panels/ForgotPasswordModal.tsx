@@ -5,6 +5,7 @@ import { authApi, getApiErrorMessage } from '../../../services/api'
 import AnimatedModal from '../../common/AnimatedModal'
 
 type Step = 'email' | 'verify' | 'reset' | 'success'
+type VerificationMethod = 'email' | 'totp'
 
 interface Props {
   isOpen: boolean
@@ -24,6 +25,7 @@ export default function ForgotPasswordModal({ isOpen, onClose, userEmail, masked
   const [error, setError] = useState('')
   const [countdown, setCountdown] = useState(0)
   const [loading, setLoading] = useState(false)
+  const [verificationMethod, setVerificationMethod] = useState<VerificationMethod>('email')
 
   const isEnglish = lang === 'en'
 
@@ -38,6 +40,7 @@ export default function ForgotPasswordModal({ isOpen, onClose, userEmail, masked
     setError('')
     setCountdown(0)
     setLoading(false)
+    setVerificationMethod('email')
   }, [isOpen])
 
   useEffect(() => {
@@ -71,7 +74,11 @@ export default function ForgotPasswordModal({ isOpen, onClose, userEmail, masked
 
     setLoading(true)
     try {
-      await sendCode()
+      const result = await authApi.checkForgotPasswordEmail(userEmail)
+      setVerificationMethod(result.verification_method)
+      if (result.verification_method === 'email') {
+        await sendCode()
+      }
       setStep('verify')
     } catch (err) {
       setError(getApiErrorMessage(err, isEnglish ? 'Unable to send verification code.' : '验证码发送失败，请稍后重试。'))
@@ -185,17 +192,29 @@ export default function ForgotPasswordModal({ isOpen, onClose, userEmail, masked
           {step === 'verify' && (
             <>
               <p className="forgot-modal__desc">
-                {t('settings.forgotPassword.verifyDesc').replace('{{email}}', userEmail)}
+                {verificationMethod === 'totp'
+                  ? t('settings.forgotPassword.totpDesc')
+                  : t('settings.forgotPassword.verifyDesc').replace('{{email}}', userEmail)}
               </p>
-              <p className="settings-panel__hint" style={{ margin: 0 }}>
-                {isEnglish ? 'Beta code: 000000' : '内测验证码：000000'}
-              </p>
+              {verificationMethod === 'email' && (
+                <p className="settings-panel__hint" style={{ margin: 0 }}>
+                  {isEnglish ? 'Beta code: 000000' : '内测验证码：000000'}
+                </p>
+              )}
               <input
                 className="settings-panel__input"
                 type="text"
+                inputMode={verificationMethod === 'totp' ? 'numeric' : undefined}
                 value={codeInput}
-                onChange={(e) => { setCodeInput(e.target.value); setError('') }}
-                placeholder={t('settings.forgotPassword.codePlaceholder')}
+                onChange={(e) => {
+                  setCodeInput(verificationMethod === 'totp'
+                    ? e.target.value.replace(/\D/g, '').slice(0, 6)
+                    : e.target.value)
+                  setError('')
+                }}
+                placeholder={verificationMethod === 'totp'
+                  ? t('settings.forgotPassword.totpPlaceholder')
+                  : t('settings.forgotPassword.codePlaceholder')}
                 maxLength={12}
               />
               {error && <p className="forgot-modal__error">{error}</p>}
@@ -208,16 +227,18 @@ export default function ForgotPasswordModal({ isOpen, onClose, userEmail, masked
                 >
                   {loading ? '...' : t('settings.security.confirm')}
                 </button>
-                <button
-                  className="settings-panel__btn settings-panel__btn--gray"
-                  onClick={handleResend}
-                  type="button"
-                  disabled={loading || countdown > 0}
-                >
-                  {countdown > 0
-                    ? `${t('settings.forgotPassword.resend')} (${countdown}s)`
-                    : t('settings.forgotPassword.resend')}
-                </button>
+                {verificationMethod === 'email' && (
+                  <button
+                    className="settings-panel__btn settings-panel__btn--gray"
+                    onClick={handleResend}
+                    type="button"
+                    disabled={loading || countdown > 0}
+                  >
+                    {countdown > 0
+                      ? `${t('settings.forgotPassword.resend')} (${countdown}s)`
+                      : t('settings.forgotPassword.resend')}
+                  </button>
+                )}
               </div>
             </>
           )}

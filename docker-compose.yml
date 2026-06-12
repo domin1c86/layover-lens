@@ -3,8 +3,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_AI_SEARCH_ENABLED: ${VITE_AI_SEARCH_ENABLED:-false}
     ports:
-      - "3200:3000"
+      - "3000:3000"
     depends_on:
       backend:
         condition: service_healthy
@@ -25,7 +27,7 @@ services:
     environment:
       - DATABASE_URL=mysql+mysqlconnector://root:devpassword@mysql:3306/layover_lens
       - APP_ENV=development
-      - CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000","http://localhost:3200","http://127.0.0.1:3200"]
+      - CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
       - SESSION_COOKIE_SECRET=${SESSION_COOKIE_SECRET:-dev-session-cookie-secret}
       - CSRF_SECRET=${CSRF_SECRET:-dev-csrf-secret}
       - TOTP_ENCRYPTION_SECRET=${TOTP_ENCRYPTION_SECRET:-dev-totp-encryption-secret}
@@ -38,8 +40,40 @@ services:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-v4-flash}
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      - AI_MODEL_PROVIDER=${AI_MODEL_PROVIDER:-deepseek}
+      - AI_MODEL_API_KEY=${AI_MODEL_API_KEY:-}
+      - AI_MODEL_BASE_URL=${AI_MODEL_BASE_URL:-}
+      - AI_MODEL_NAME=${AI_MODEL_NAME:-}
+      - AI_MODEL_TIMEOUT_SECONDS=${AI_MODEL_TIMEOUT_SECONDS:-30}
+      - AI_MODEL_SUPPORTS_JSON_MODE=${AI_MODEL_SUPPORTS_JSON_MODE:-true}
+      - AI_AGENT_TURN_MODE=${AI_AGENT_TURN_MODE:-single}
+      - AI_CHAT_RETENTION_DAYS=${AI_CHAT_RETENTION_DAYS:-30}
+      - AI_AGENT_STORAGE_SOFT_LIMIT_MB=${AI_AGENT_STORAGE_SOFT_LIMIT_MB:-0}
+      - AI_AGENT_STORAGE_DISABLE_NEW_WRITES=${AI_AGENT_STORAGE_DISABLE_NEW_WRITES:-false}
+      - AI_AGENT_CLEANUP_INTERVAL_MINUTES=${AI_AGENT_CLEANUP_INTERVAL_MINUTES:-60}
+      - AI_AGENT_TOOLS_ENABLED=${AI_AGENT_TOOLS_ENABLED:-true}
+      - AI_AGENT_WEATHER_PROVIDER=${AI_AGENT_WEATHER_PROVIDER:-open_meteo}
+      - AI_AGENT_WEATHER_TIMEOUT_SECONDS=${AI_AGENT_WEATHER_TIMEOUT_SECONDS:-8}
+      - AI_AGENT_TOOL_TIMEOUT_SECONDS=${AI_AGENT_TOOL_TIMEOUT_SECONDS:-8}
+      - AMAP_WEB_SERVICE_KEY=${AMAP_WEB_SERVICE_KEY:-}
+      - BAIDU_MAP_WEB_SERVICE_AK=${BAIDU_MAP_WEB_SERVICE_AK:-}
+      - AI_AGENT_POI_ENABLED=${AI_AGENT_POI_ENABLED:-true}
+      - AI_AGENT_POI_PRIMARY_PROVIDER=${AI_AGENT_POI_PRIMARY_PROVIDER:-amap}
+      - AI_AGENT_POI_DUAL_VERIFY_ENABLED=${AI_AGENT_POI_DUAL_VERIFY_ENABLED:-false}
+      - AI_AGENT_POI_CACHE_TTL_DAYS=${AI_AGENT_POI_CACHE_TTL_DAYS:-30}
+      - AI_AGENT_POI_MAX_RESULTS=${AI_AGENT_POI_MAX_RESULTS:-5}
+      - AI_AGENT_POI_AMAP_MONTHLY_LIMIT=${AI_AGENT_POI_AMAP_MONTHLY_LIMIT:-5000}
+      - AI_AGENT_POI_AMAP_QPS_LIMIT=${AI_AGENT_POI_AMAP_QPS_LIMIT:-3}
+      - AI_AGENT_POI_BAIDU_PLACE_DAILY_LIMIT=${AI_AGENT_POI_BAIDU_PLACE_DAILY_LIMIT:-100}
+      - AI_AGENT_POI_BAIDU_PLACE_QPS_LIMIT=${AI_AGENT_POI_BAIDU_PLACE_QPS_LIMIT:-3}
+      - AI_AGENT_POI_BAIDU_GEOCODE_DAILY_LIMIT=${AI_AGENT_POI_BAIDU_GEOCODE_DAILY_LIMIT:-5000}
+      - AI_AGENT_POI_BAIDU_REVERSE_GEOCODE_DAILY_LIMIT=${AI_AGENT_POI_BAIDU_REVERSE_GEOCODE_DAILY_LIMIT:-300}
+      - LANGGRAPH_CHECKPOINT_DATABASE_URL=postgresql://langgraph:${LANGGRAPH_POSTGRES_PASSWORD:-dev-langgraph-password}@postgres:5432/langgraph
+      - LANGGRAPH_AES_KEY=${LANGGRAPH_AES_KEY:-dev-langgraph-key-32-bytes-long!}
     depends_on:
       mysql:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     healthcheck:
       test:
@@ -53,6 +87,22 @@ services:
       timeout: 5s
       retries: 12
       start_period: 15s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: langgraph
+      POSTGRES_PASSWORD: ${LANGGRAPH_POSTGRES_PASSWORD:-dev-langgraph-password}
+      POSTGRES_DB: langgraph
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langgraph -d langgraph"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     restart: unless-stopped
 
   mysql:
@@ -79,3 +129,4 @@ services:
 
 volumes:
   mysql_data:
+  postgres_data:

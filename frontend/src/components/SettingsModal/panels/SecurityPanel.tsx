@@ -81,6 +81,8 @@ export default function SecurityPanel() {
   const [totpSetupMethod, setTotpSetupMethod] = useState<TotpSetupMethod>('qr')
   const [totpError, setTotpError] = useState('')
   const [totpLoading, setTotpLoading] = useState(false)
+  const [totpReplacementLoading, setTotpReplacementLoading] = useState(false)
+  const [totpReplacementError, setTotpReplacementError] = useState('')
 
   const currentEmail = user?.email || ''
   const targetEmail = email.trim()
@@ -389,6 +391,20 @@ export default function SecurityPanel() {
     setTotpDialog(user?.totp_enabled ? 'disable' : 'setup-password')
   }
 
+  const updateTotpEmailCodeReplacement = async () => {
+    if (!user?.totp_enabled || totpReplacementLoading) return
+    setTotpReplacementLoading(true)
+    setTotpReplacementError('')
+    try {
+      await authApi.updateTotpEmailCodeReplacement(!user.totp_replaces_email_codes)
+      await refreshUser()
+    } catch (err) {
+      setTotpReplacementError(getApiErrorMessage(err, t('settings.security.totpReplacementFailed')))
+    } finally {
+      setTotpReplacementLoading(false)
+    }
+  }
+
   const handleUpdatePassword = async () => {
     if (!canUpdatePassword) return
     setPasswordLoading(true)
@@ -514,7 +530,25 @@ export default function SecurityPanel() {
             {user?.totp_enabled ? t('settings.security.totpDisable') : t('settings.security.totpEnable')}
           </button>
         </div>
-        {emailError && !emailDialog && <p className="forgot-modal__error">{emailError}</p>}
+        <div className="settings-panel__preference-row">
+          <div>
+            <div className="settings-panel__preference-title">{t('settings.security.totpReplacementTitle')}</div>
+            <p className="settings-panel__hint">{t('settings.security.totpReplacementDesc')}</p>
+            <p className="settings-panel__hint">{t('settings.security.totpReplacementOwnershipNote')}</p>
+          </div>
+          <button
+            className={`settings-panel__toggle ${user?.totp_replaces_email_codes ? 'active' : ''}`}
+            type="button"
+            role="switch"
+            aria-checked={user?.totp_replaces_email_codes ?? false}
+            aria-label={t('settings.security.totpReplacementTitle')}
+            disabled={!user?.totp_enabled || totpReplacementLoading}
+            onClick={() => void updateTotpEmailCodeReplacement()}
+          >
+            <span className="settings-panel__toggle-knob" />
+          </button>
+        </div>
+        {totpReplacementError && <p className="forgot-modal__error">{totpReplacementError}</p>}
       </div>
 
       <div className="settings-panel__section">
