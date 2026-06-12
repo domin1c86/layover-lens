@@ -11,45 +11,44 @@
 
 Layover Lens is an open-source project for validating city-level transportation strategy recommendations. The current version does not promise realtime fares, realtime inventory, or purchasable schedules. Instead, it returns route strategies such as `Beijing -> Nanjing -> Chengdu`, with estimated cost, estimated duration, service density, confidence, and external ticket-search entry points for each segment.
 
-The goal is to validate the search experience, strategy algorithm, AI parameter collection, feedback annotation, and future training loop first. If realtime train or flight providers are added later, the segment provider and training data source can be replaced without rebuilding the frontend or API contract.
+The goal is to validate the search experience, C++ strategy algorithm, AI parameter collection, user feedback, manual annotation, and future training loop first. If realtime train or flight providers are added later, the segment data provider and training data source can be replaced without rebuilding the frontend or API contract.
 
-## Current Capabilities
+## Current Status
 
-- **Route strategy recommendations**: default search returns city-path strategies instead of detailed schedules.
-- **C++ algorithm core**: traffic graph construction, candidate retrieval, segment estimation, direct-price guardrails, and linear ranking are implemented in C++17 through pybind11.
-- **Mock and historical CSV modes**: mock data is used when no CSV artifact is available; historical CSV artifacts can drive graph features and linear ranker weights.
-- **AI conversational search**: LangGraph-based agent collects required fields such as origin, destination, and date, then executes search after user confirmation.
-- **Model adapters**: DeepSeek is supported, with an OpenAI-compatible HTTP adapter kept for other providers.
+- **Route strategy recommendations**: default search returns city-path strategies instead of detailed train or flight schedules.
+- **C++ algorithm core**: traffic graph construction, candidate retrieval, segment estimation, direct-price guardrails, and linear ranking run in C++17 through pybind11.
+- **Simple linear model**: the current model artifact is `linear_ranker_v1.json`; it controls C++ ranking weights and does not yet update online from user feedback.
+- **Mock / historical data modes**: mock data is used when no training artifact is available; historical CSV/XLSX artifacts can drive graph features and model weights.
+- **AI conversational search**: a LangGraph-based agent collects fields such as origin, destination, and date, then executes strategy search after user confirmation.
 - **Agent tools**: date, weather, and real POI tools. POI search uses Amap first and Baidu as fallback, with a lightweight RAG cache.
-- **Account system**: real backend registration, login, logout, HttpOnly cookie sessions, CSRF, device management, and TOTP 2FA.
+- **Account security**: real backend registration and login, HttpOnly cookie sessions, CSRF, device management, TOTP 2FA, and optional 2FA replacement for email verification codes.
 - **Frontend experience**: regular search, AI search, favorites, local avatars, theme switching, Chinese/English UI, route feedback, and external ticket-link warnings.
-- **Feedback loop**: anonymous route feedback can be stored in MySQL for later manual annotation and model training.
+- **Feedback-loop foundation**: route feedback can be submitted anonymously or by logged-in users and stored in MySQL for later annotation and training export.
 
 ## Architecture
 
 ```text
 React 18 + TypeScript + Vite frontend (:3000)
-  -> Axios / fetch API client
+  -> Axios API client
   -> Nginx / Vite proxy for /api
 
 FastAPI backend (:8000)
-  -> auth / user / cities / search / bookings routers
-  -> SearchService orchestrates route strategy search
-  -> LangGraph-based AI agent with tools and checkpoint storage
+  -> auth / user / cities / search routers
+  -> SearchService calls the C++ route strategy planner
+  -> LangGraph Agent + tools + checkpoint storage
 
 C++ planner module
   -> TrafficGraphBuilder
   -> CandidateRetriever
   -> RankingModel
-  -> pybind11 bindings used by Python wrapper
+  -> pybind11 bindings
 
 MySQL 8.0
-  -> users, auth tokens, devices, preferences
-  -> mock catalog data, favorites, route feedback
-  -> POI cache and training metadata
+  -> users, sessions, devices, preferences, favorites
+  -> mock catalog, POI cache, route feedback, training metadata
 
 PostgreSQL
-  -> LangGraph checkpoint storage for AI sessions
+  -> LangGraph checkpoint storage
 ```
 
 ## Quick Start
@@ -81,7 +80,7 @@ Avoid running `docker compose down -v` unless you intentionally want to delete d
 
 ### Backend
 
-Local backend development uses a Python 3.10.11 virtual environment:
+Local backend development uses the Python 3.10.11 `.venv310` virtual environment:
 
 ```powershell
 cd backend
@@ -107,46 +106,98 @@ npm run test
 npm run build
 ```
 
-## Historical CSV and Route Training
+All user-facing frontend text should live in `frontend/src/locales`, with mirrored Chinese and English keys.
+
+## Route Training Data and Model
 
 Training data lives under:
 
 ```text
 backend/data/route_training/
-  raw_csv/       # raw CSV files, ignored by git
-  artifacts/     # offline aggregated graph artifacts
+  raw_csv/       # raw CSV/XLSX files, ignored by Git by default
+  artifacts/     # aggregated traffic graph artifacts
   models/        # linear ranker weight files
 ```
 
-Initialize and build:
+The online search needs both artifacts:
+
+- `backend/data/route_training/artifacts/route_edges_v1.json.gz`
+- `backend/data/route_training/models/linear_ranker_v1.json`
+
+Build and inspect:
 
 ```powershell
 cd backend
 .\.venv310\Scripts\python.exe -m app.cli.route_training init
 .\.venv310\Scripts\python.exe -m app.cli.route_training status
 .\.venv310\Scripts\python.exe -m app.cli.route_training build
+.\.venv310\Scripts\python.exe -m app.cli.route_training validate
+.\.venv310\Scripts\python.exe -m app.cli.route_training evaluate
 ```
 
-When no CSV or artifact is available, the system keeps using mock data. When a valid artifact and model file exist, search switches to the historical dataset and returns `route_dataset_mode`, `route_dataset_version`, and `route_model_version`.
+With `ROUTE_DATASET_MODE=auto`, the service uses a historical artifact when available and falls back to mock when it is missing. You can also force:
+
+- `ROUTE_DATASET_MODE=mock`
+- `ROUTE_DATASET_MODE=historical`
+
+Generated training artifacts are ignored by `.gitignore` by default. If you want the open-source version to run with the historical model out of the box, force-add the compact artifact and model, but do not commit raw CSV/XLSX files:
+
+```powershell
+git add -f backend/data/route_training/artifacts/route_edges_v1.json.gz
+git add -f backend/data/route_training/models/linear_ranker_v1.json
+```
+
+If artifacts become large later, prefer GitHub Releases, Git LFS, DVC, or object storage.
+
+## Feedback and Self-Improvement Boundary
+
+The project can already collect route feedback:
+
+- Route-card feedback from regular search.
+- AI-search experience feedback.
+- Anonymous and logged-in feedback.
+- Four star ratings, text comments, adopted route selections, clicked provider, search request snapshot, and recommendation snapshot.
+- `dataset_version` and `model_version` are stored for model-performance tracing.
+
+The project does not yet update online model parameters directly from user feedback. The recommended training loop is:
+
+```text
+route_feedback / route_feedback_annotations
+  -> clean valid samples
+  -> generate manual or rule-based labels
+  -> train a candidate model offline
+  -> compare with evaluate
+  -> manually approve and publish
+```
+
+Small feedback sets are noisy and should not automatically change production weights. The first version should remain offline-trained, offline-evaluated, manually published, and rollback-friendly.
 
 ## API List
 
-Full API list: [description/api-interface-list.md](./description/api-interface-list.md).
+Full API documentation: [description/api-interface-list.md](./description/api-interface-list.md).
 
 Common endpoints:
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/health` | Service, data source, planner, AI, and POI capability summary |
+| `GET` | `/health` | Service, data source, planner, AI, POI, and training artifact summary |
 | `GET` | `/api/v1/cities` | City list and keyword filtering |
 | `POST` | `/api/v1/search` | Route strategy search |
 | `POST` | `/api/v1/search/feedback` | Route feedback, supports anonymous submission |
+| `GET` | `/api/v1/search/feedback/annotated` | Export annotated feedback samples |
 | `POST` | `/api/v1/search/ai/sessions/stream` | Create an AI session and stream response |
 | `POST` | `/api/v1/search/ai/sessions/{session_id}/confirm/stream` | Confirm AI search and stream results |
+| `GET` | `/api/v1/search/ai/memory` | Read Agent long-term memory |
+| `DELETE` | `/api/v1/search/ai/memory/{memory_key}` | Delete one Agent memory item |
 | `POST` | `/api/v1/auth/register` | Register and set session cookies |
 | `POST` | `/api/v1/auth/login` | Login, may return a TOTP challenge |
+| `POST` | `/api/v1/auth/logout` | Logout |
 | `GET` | `/api/v1/user/profile` | Current user profile |
+| `PUT` | `/api/v1/user/profile` | Update user profile |
 | `GET` | `/api/v1/user/devices` | Login device list |
+| `POST` | `/api/v1/user/totp/setup` | Create TOTP setup data |
+| `POST` | `/api/v1/user/totp/enable` | Enable TOTP |
+| `POST` | `/api/v1/user/totp/disable` | Disable TOTP |
 
 ## Key Environment Variables
 
@@ -154,10 +205,12 @@ Common endpoints:
 | --- | --- | --- |
 | `APP_ENV` | `development` | `development` or `production` |
 | `DATABASE_URL` | set in compose | MySQL connection string |
-| `ROUTE_PLANNER_BACKEND` | `auto` | `cpp`, `python`, or `auto`; default search should use the C++ strategy planner |
+| `ROUTE_PLANNER_BACKEND` | `auto` | `cpp`, `python`, or `auto` |
 | `ROUTE_TRAINING_DATA_DIR` | `backend/data/route_training` | CSV, artifact, and model directory |
 | `ROUTE_DATASET_MODE` | `auto` | `auto`, `mock`, or `historical` |
 | `SESSION_COOKIE_SECURE` | `false` locally | Should be `true` behind HTTPS in production |
+| `CSRF_SECRET` | dev default | Must be replaced in production |
+| `TOTP_ENCRYPTION_SECRET` | dev default | Must be replaced in production |
 | `VITE_AI_SEARCH_ENABLED` | `false` | Whether the frontend AI search entry is enabled |
 | `AI_MODEL_PROVIDER` | `deepseek` | Agent model provider |
 | `DEEPSEEK_API_KEY` | empty | DeepSeek API key |
@@ -172,13 +225,13 @@ See [backend/app/config.py](./backend/app/config.py) for the full configuration 
 ## Project Structure
 
 ```text
-frontend/                 React + TypeScript + Vite
-backend/app/              FastAPI routers, services, schemas, agents
-backend/planner/          C++17 planner and pybind11 bindings
-backend/data/route_training/
-database/init.sql         MySQL initialization script
-description/              design and API documentation
-docker-compose.yml        local orchestration
+frontend/                         React + TypeScript + Vite
+backend/app/                      FastAPI routers, services, schemas, agents
+backend/planner/                  C++17 planner and pybind11 bindings
+backend/data/route_training/      training data, artifacts, model weights
+database/init.sql                 MySQL initialization script
+description/                      design and API documentation
+docker-compose.yml                local orchestration
 ```
 
 ## Tests
@@ -198,7 +251,7 @@ docker compose exec -T backend python -m pytest tests/ -q
 
 ## Data and Disclaimer
 
-Current route strategies are based on mock data or aggregated offline CSV estimates. They do not represent realtime fares, realtime inventory, or purchasable schedules. External platform buttons are only segment-search entry points. Final prices, inventory, refund/change policies, and booking rules are controlled by the external platforms.
+Current route strategies are based on mock data or aggregated offline CSV/XLSX estimates. They do not represent realtime fares, realtime inventory, or purchasable schedules. External platform buttons are only segment-search entry points. Final prices, inventory, refund/change policies, and booking rules are controlled by the external platforms.
 
 ## License
 
