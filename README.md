@@ -11,8 +11,6 @@
 
 Layover Lens 是一个用于验证“城市级交通策略推荐”的开源项目。当前版本不承诺实时票价、实时余票或具体可购买班次，而是根据出发地、目的地、日期和偏好，给出类似 `北京 -> 南京 -> 成都` 的路线策略，并为每一段提供估算费用、估算耗时、服务密度、置信度和外部票务平台查询入口。
 
-项目目标是先跑通搜索体验、C++ 策略算法、AI 参数收集、用户反馈、人工标注和后续训练闭环。未来如果接入真实火车/航班供应商，只需要替换分段数据 provider 和训练数据源，不需要推翻前端和 API 契约。
-
 ## 当前状态
 
 - **路线策略推荐**：默认返回城市路径方案，不再主展示具体航班/车次明细。
@@ -140,14 +138,7 @@ cd backend
 - `ROUTE_DATASET_MODE=mock`
 - `ROUTE_DATASET_MODE=historical`
 
-训练产物默认被 `.gitignore` 忽略。如果希望开源版本开箱即用，可以强制提交压缩后的 artifact 和模型文件，但不要提交原始 CSV/XLSX：
-
-```powershell
-git add -f backend/data/route_training/artifacts/route_edges_v1.json.gz
-git add -f backend/data/route_training/models/linear_ranker_v1.json
-```
-
-如果未来 artifact 体积明显变大，建议改用 GitHub Release、Git LFS、DVC 或对象存储。
+训练产物默认被 `.gitignore` 忽略。你可以自行添加所需的原始数据到 `raw_csv` 目录。
 
 ## 反馈与自进化边界
 
@@ -159,7 +150,7 @@ git add -f backend/data/route_training/models/linear_ranker_v1.json
 - 四项五星评分、文本评论、采用方案、多选方案、点击平台、搜索请求快照和推荐结果快照。
 - 后端保存 `dataset_version` 和 `model_version`，便于回溯模型表现。
 
-当前还没有开启“用户反馈实时修改线上参数”。推荐路线是：
+当前还没有开启“用户反馈实时修改线上参数”。未来考虑路线：
 
 ```text
 route_feedback / route_feedback_annotations
@@ -170,7 +161,7 @@ route_feedback / route_feedback_annotations
   -> 人工确认发布
 ```
 
-少量反馈不适合自动调参，因为噪声较大。第一版应保持“离线训练、离线评估、手动发布、可回滚”。
+少量反馈不适合自动调参，因为噪声较大。当前第一版保持“离线训练、离线评估、手动发布、可回滚”。
 
 ## API 清单
 
