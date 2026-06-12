@@ -11,8 +11,6 @@
 
 Layover Lens is an open-source project for validating city-level transportation strategy recommendations. The current version does not promise realtime fares, realtime inventory, or purchasable schedules. Instead, it returns route strategies such as `Beijing -> Nanjing -> Chengdu`, with estimated cost, estimated duration, service density, confidence, and external ticket-search entry points for each segment.
 
-The goal is to validate the search experience, C++ strategy algorithm, AI parameter collection, user feedback, manual annotation, and future training loop first. If realtime train or flight providers are added later, the segment data provider and training data source can be replaced without rebuilding the frontend or API contract.
-
 ## Current Status
 
 - **Route strategy recommendations**: default search returns city-path strategies instead of detailed train or flight schedules.
@@ -140,14 +138,7 @@ With `ROUTE_DATASET_MODE=auto`, the service uses a historical artifact when avai
 - `ROUTE_DATASET_MODE=mock`
 - `ROUTE_DATASET_MODE=historical`
 
-Generated training artifacts are ignored by `.gitignore` by default. If you want the open-source version to run with the historical model out of the box, force-add the compact artifact and model, but do not commit raw CSV/XLSX files:
-
-```powershell
-git add -f backend/data/route_training/artifacts/route_edges_v1.json.gz
-git add -f backend/data/route_training/models/linear_ranker_v1.json
-```
-
-If artifacts become large later, prefer GitHub Releases, Git LFS, DVC, or object storage.
+Generated training artifacts are ignored by `.gitignore` by default. You can add the required raw data to the `raw_csv` directory yourself if needed.
 
 ## Feedback and Self-Improvement Boundary
 
@@ -159,7 +150,7 @@ The project can already collect route feedback:
 - Four star ratings, text comments, adopted route selections, clicked provider, search request snapshot, and recommendation snapshot.
 - `dataset_version` and `model_version` are stored for model-performance tracing.
 
-The project does not yet update online model parameters directly from user feedback. The recommended training loop is:
+The project does not yet update online model parameters directly from user feedback. The future training loop is:
 
 ```text
 route_feedback / route_feedback_annotations
@@ -170,7 +161,7 @@ route_feedback / route_feedback_annotations
   -> manually approve and publish
 ```
 
-Small feedback sets are noisy and should not automatically change production weights. The first version should remain offline-trained, offline-evaluated, manually published, and rollback-friendly.
+Small feedback sets are noisy and should not automatically change production weights. The current first version keeps offline-trained, offline-evaluated, manually published, and rollback-friendly.
 
 ## API List
 

@@ -26,4 +26,4 @@ cd backend
 
 `ROUTE_DATASET_MODE=auto` uses a historical artifact when one is available and falls back to mock data when it is missing. Set `ROUTE_DATASET_MODE=historical` to require historical data.
 
-Generated artifacts and model files are ignored by Git by default. For an open-source release, it is reasonable to commit the compact artifact and model if they stay small enough, but do not commit raw CSV/XLSX source files.
+Generated artifacts and model files are ignored by Git by default.
