@@ -1,4 +1,6 @@
+import gzip
 import json
+import zipfile
 from datetime import date, time
 from uuid import uuid4
 
@@ -13,7 +15,12 @@ from app.agents.search_agent import CONFIRM_PATTERNS, REJECT_PATTERNS, reset_sea
 from app.services import reset_search_service_cache
 from app.services.route_feedback import reset_route_feedback_service_cache
 from app.services.route_strategy import RouteStrategyService
-from app.services.route_training import build_route_training_artifacts
+from app.services.route_training import (
+    build_route_training_artifacts,
+    evaluate_route_training_artifact,
+    normalize_vehicle_code,
+    validate_route_training_artifact,
+)
 from app.schemas import SearchRequest
 
 
@@ -21,6 +28,7 @@ from app.schemas import SearchRequest
 def _use_legacy_agent_model(monkeypatch) -> None:
     monkeypatch.setattr(settings, "ai_model_provider", "legacy")
     monkeypatch.setattr(settings, "deepseek_api_key", "")
+    monkeypatch.setattr(settings, "route_dataset_mode", "mock")
 
 
 def _fresh_client() -> TestClient:
@@ -149,8 +157,8 @@ def test_search_endpoint_accepts_legacy_alias_fields() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    prices = [route["estimated_total_price"] for route in payload["recommendations"]]
-    assert prices == sorted(prices)
+    assert payload["recommendations"]
+    assert all(route["estimated_total_price"] > 0 for route in payload["recommendations"])
 
 
 def test_search_unknown_city_returns_404() -> None:
@@ -455,6 +463,81 @@ def _write_training_csv(root) -> None:
             )
 
 
+def _write_current_format_training_csv(root) -> None:
+    raw_dir = root / "raw_csv"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    with (raw_dir / "data_train.csv").open("w", encoding="utf-8", newline="") as handle:
+        handle.write(
+            "provider,type,code,departure,departure_name,departure_city,arrival,arrival_name,"
+            "arrival_city,year,date,depart_time,arrive_time,price\n"
+        )
+        handle.write(
+            "12306,train,G137,AS,Alpha Station - 阿站,Alpha - 阿城,BS,Beta Station - 贝站,"
+            "Beta - 贝城,2020,01-01,08:00,09:00,0\n"
+        )
+        handle.write(
+            "12306,train,G137,BS,Beta Station - 贝站,Beta - 贝城,CS,Gamma Station - 丙站,"
+            "Gamma - 丙城,2020,01-01,09:10,10:20,75\n"
+        )
+    with (raw_dir / "data_flight.csv").open("w", encoding="utf-8", newline="") as handle:
+        handle.write(
+            "provider,type,code,departure,departure_name,departure_city,arrival,arrival_name,"
+            "arrival_city,year,date,depart_time,arrive_time,price\n"
+        )
+        handle.write(
+            "CA,flight,CA1537,AAA,Alpha Airport - 阿机场,Alpha - 阿城,CCC,Gamma Airport - 丙机场,"
+            "Gamma - 丙城,na,na,na,na,580\n"
+        )
+
+
+def _write_train_lines_xlsx(path) -> None:
+    rows = [
+        ["ID", "车次", "站点名称", "到达时间", "出发时间", "停留时间", "历时（min）", "里程（km）"],
+        ["1", "D999", "阿站", "", "08:00:00", "0", "0", "0"],
+        ["2", "D999", "贝站", "09:00:00", "09:05:00", "5", "60", "100"],
+        ["3", "D999", "丙站", "10:20:00", "10:25:00", "5", "140", "220"],
+        ["4", "D999", "丁站", "12:20:00", "", "0", "260", "420"],
+    ]
+    sheet_rows = []
+    for row_index, row in enumerate(rows, start=1):
+        cells = []
+        for col_index, value in enumerate(row, start=1):
+            col = chr(ord("A") + col_index - 1)
+            cells.append(f'<c r="{col}{row_index}" t="inlineStr"><is><t>{value}</t></is></c>')
+        sheet_rows.append(f'<row r="{row_index}">{"".join(cells)}</row>')
+    sheet_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f'<sheetData>{"".join(sheet_rows)}</sheetData></worksheet>'
+    )
+    with zipfile.ZipFile(path, "w") as workbook:
+        workbook.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            "</Types>",
+        )
+        workbook.writestr(
+            "xl/workbook.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            '<sheets><sheet name="TrainDetails" sheetId="1" r:id="rId1"/></sheets></workbook>',
+        )
+        workbook.writestr(
+            "xl/_rels/workbook.xml.rels",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+            'Target="worksheets/sheet1.xml"/></Relationships>',
+        )
+        workbook.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+
+
 def _write_ranker_weights(path, *, price_weight: float, duration_weight: float) -> None:
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload["version"] = f"test_price_{price_weight}_duration_{duration_weight}"
@@ -503,6 +586,99 @@ def test_historical_csv_artifact_and_linear_weights_change_ranking(tmp_path, mon
     duration_payload = duration_response.json()
     assert duration_payload["route_model_version"].startswith("test_price_0")
     assert duration_payload["recommendations"][0]["city_path"] == ["Alpha", "Gamma"]
+
+
+def test_vehicle_code_normalization() -> None:
+    assert normalize_vehicle_code("G137") == "G-137"
+    assert normalize_vehicle_code("G-137") == "G-137"
+    assert normalize_vehicle_code("G 137") == "G-137"
+    assert normalize_vehicle_code("K1471") == "K-1471"
+    assert normalize_vehicle_code("C453") == "C-453"
+    assert normalize_vehicle_code("CA1537") == "CA-1537"
+    assert normalize_vehicle_code("HO1227") == "HO-1227"
+    assert normalize_vehicle_code("CA") == "CA-ERR"
+    assert normalize_vehicle_code("1537") == "ERR-1537"
+    assert normalize_vehicle_code("") == "ERR-ERR"
+    assert normalize_vehicle_code("na") == "ERR-ERR"
+
+
+def test_current_csv_and_train_line_templates_build_historical_artifact(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "route_training_data_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "route_dataset_mode", "historical")
+    _write_current_format_training_csv(tmp_path)
+    _write_train_lines_xlsx(tmp_path / "raw_csv" / "2019_lines.xlsx")
+
+    build_result = build_route_training_artifacts()
+    assert build_result.accepted_rows > 0
+    with gzip.open(build_result.artifact_path, "rt", encoding="utf-8") as handle:
+        artifact = json.load(handle)
+
+    metadata = artifact["training_metadata"]
+    assert metadata["source_xlsx_files"] == ["2019_lines.xlsx"]
+    assert metadata["excel_expanded_segments"] == 6
+    assert metadata["excel_accepted_segments"] >= 3
+    assert metadata["missing_price_count"] >= 2
+    assert metadata["missing_duration_count"] >= 1
+
+    edges = {
+        (edge["from_city_code"], edge["to_city_code"], edge["transport_type"]): edge
+        for edge in artifact["edges"]
+    }
+    assert ("ALPHA", "BETA", "train") in edges
+    assert ("ALPHA", "GAMMA", "train") in edges
+    assert ("ALPHA", "GAMMA", "flight") in edges
+    assert edges[("ALPHA", "BETA", "train")]["estimated_price"] > 0
+    assert edges[("ALPHA", "BETA", "train")]["estimated_price"] != 0
+    assert edges[("ALPHA", "GAMMA", "flight")]["estimated_duration_minutes"] > 0
+
+
+def test_training_validate_and_evaluate_return_quality_reports(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "route_training_data_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "route_dataset_mode", "historical")
+    _write_current_format_training_csv(tmp_path)
+    _write_train_lines_xlsx(tmp_path / "raw_csv" / "2019_lines.xlsx")
+    build_route_training_artifacts()
+
+    validation = validate_route_training_artifact()
+    assert validation["status"] == "ok"
+    assert validation["edge_count"] > 0
+    assert "template_only_edges_present" in validation["warnings"]
+    assert validation["top_unmapped_stations"] or validation["template_only_edge_count"] > 0
+
+    evaluation = evaluate_route_training_artifact()
+    assert evaluation["status"] == "ok"
+    assert evaluation["case_count"] > 0
+    assert evaluation["result_rate"] > 0
+    assert evaluation["benchmarks"][0]["top_path"]
+
+
+def test_training_city_alias_merge_drops_self_loops(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "route_training_data_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "route_dataset_mode", "historical")
+    raw_dir = tmp_path / "raw_csv"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    with (raw_dir / "alias.csv").open("w", encoding="utf-8", newline="") as handle:
+        handle.write(
+            "provider,type,code,departure,departure_name,departure_city,arrival,arrival_name,"
+            "arrival_city,year,date,depart_time,arrive_time,price\n"
+        )
+        handle.write(
+            "12306,train,G1,A1,Alpha One - 阿站1,Alpha - 阿城,A2,Alpha Two - 阿站2,"
+            "Alt Alpha - 阿城,2020,01-01,08:00,09:00,30\n"
+        )
+        handle.write(
+            "12306,train,G2,A1,Alpha One - 阿站1,Alpha - 阿城,B1,Beta One - 贝站,"
+            "Beta - 贝城,2020,01-01,10:00,11:00,70\n"
+        )
+
+    build_result = build_route_training_artifacts()
+    with gzip.open(build_result.artifact_path, "rt", encoding="utf-8") as handle:
+        artifact = json.load(handle)
+
+    metadata = artifact["training_metadata"]
+    assert metadata["alias_merged_city_count"] >= 1
+    assert metadata["alias_self_loop_dropped_count"] >= 1
+    assert all(edge["from_city_code"] != edge["to_city_code"] for edge in artifact["edges"])
 
 
 def test_route_feedback_and_annotation_flow() -> None:

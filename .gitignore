@@ -28,10 +28,14 @@ dist/
 build/
 test-results/
 test/
+
 backend/data/route_training/raw_csv/*
 backend/data/route_training/artifacts/*
 backend/data/route_training/models/*
+backend/data/route_training/processed/*
+
 !backend/data/route_training/raw_csv/.gitkeep
+!backend/data/route_training/processed/.gitkeep
 !backend/data/route_training/artifacts/.gitkeep
 !backend/data/route_training/models/.gitkeep
 !backend/data/route_training/README.md

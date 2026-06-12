@@ -411,43 +411,22 @@ std::vector<StrategyRecommendation> RankingModel::rank(
     std::vector<StrategyRecommendation> recommendations,
     OptimizeTarget target
 ) {
-    if (target == OptimizeTarget::Price) {
-        std::sort(recommendations.begin(), recommendations.end(), [](const auto& left, const auto& right) {
-            if (left.estimated_total_price != right.estimated_total_price) {
-                return left.estimated_total_price < right.estimated_total_price;
-            }
-            if (left.confidence != right.confidence) {
-                return left.confidence > right.confidence;
-            }
-            return left.transfer_count < right.transfer_count;
-        });
-        return recommendations;
-    }
-    if (target == OptimizeTarget::Time) {
-        std::sort(recommendations.begin(), recommendations.end(), [](const auto& left, const auto& right) {
-            if (left.estimated_total_duration_minutes != right.estimated_total_duration_minutes) {
-                return left.estimated_total_duration_minutes < right.estimated_total_duration_minutes;
-            }
-            return left.estimated_total_price < right.estimated_total_price;
-        });
-        return recommendations;
-    }
-    if (target == OptimizeTarget::Transfer) {
-        std::sort(recommendations.begin(), recommendations.end(), [](const auto& left, const auto& right) {
-            if (left.transfer_count != right.transfer_count) {
-                return left.transfer_count < right.transfer_count;
-            }
-            if (left.confidence != right.confidence) {
-                return left.confidence > right.confidence;
-            }
-            return left.estimated_total_price < right.estimated_total_price;
-        });
-        return recommendations;
-    }
-
-    std::sort(recommendations.begin(), recommendations.end(), [](const auto& left, const auto& right) {
+    std::sort(recommendations.begin(), recommendations.end(), [target](const auto& left, const auto& right) {
         if (std::abs(left.score - right.score) > 1e-9) {
             return left.score > right.score;
+        }
+        if (target == OptimizeTarget::Price && left.estimated_total_price != right.estimated_total_price) {
+            return left.estimated_total_price < right.estimated_total_price;
+        }
+        if (target == OptimizeTarget::Time &&
+            left.estimated_total_duration_minutes != right.estimated_total_duration_minutes) {
+            return left.estimated_total_duration_minutes < right.estimated_total_duration_minutes;
+        }
+        if (target == OptimizeTarget::Transfer && left.transfer_count != right.transfer_count) {
+            return left.transfer_count < right.transfer_count;
+        }
+        if (left.confidence != right.confidence) {
+            return left.confidence > right.confidence;
         }
         return left.estimated_total_price < right.estimated_total_price;
     });

@@ -3,12 +3,18 @@ from __future__ import annotations
 import argparse
 import json
 
-from app.services.route_training import build_route_training_artifacts, ensure_route_training_dirs, select_route_dataset
+from app.services.route_training import (
+    build_route_training_artifacts,
+    ensure_route_training_dirs,
+    evaluate_route_training_artifact,
+    select_route_dataset,
+    validate_route_training_artifact,
+)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build Layover Lens route training artifacts.")
-    parser.add_argument("command", choices=["init", "build", "status"])
+    parser.add_argument("command", choices=["init", "build", "status", "validate", "evaluate"])
     args = parser.parse_args()
 
     if args.command == "init":
@@ -32,6 +38,14 @@ def main() -> None:
             "model_version": selection.model_version,
             "warning": selection.warning,
         }, ensure_ascii=False, indent=2))
+        return
+
+    if args.command == "validate":
+        print(json.dumps(validate_route_training_artifact(), ensure_ascii=False, indent=2))
+        return
+
+    if args.command == "evaluate":
+        print(json.dumps(evaluate_route_training_artifact(), ensure_ascii=False, indent=2))
         return
 
     result = build_route_training_artifacts()

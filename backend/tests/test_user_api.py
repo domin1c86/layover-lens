@@ -17,6 +17,7 @@ from app.services import reset_search_service_cache, reset_user_service_cache
 def _use_legacy_agent_model(monkeypatch) -> None:
     monkeypatch.setattr(settings, "ai_model_provider", "legacy")
     monkeypatch.setattr(settings, "deepseek_api_key", "")
+    monkeypatch.setattr(settings, "route_dataset_mode", "mock")
 
 
 def _fresh_client() -> TestClient:
