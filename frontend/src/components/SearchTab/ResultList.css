@@ -748,17 +748,59 @@
 }
 
 @media (max-width: 640px) {
+  .results-header {
+    font-size: 20px;
+  }
+
+  .route-card {
+    padding: 16px;
+    border-radius: var(--rounded-md);
+  }
+
+  .route-card--strategy .route-card__header {
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .route-path-chain {
+    font-size: 17px;
+    gap: 4px;
+  }
+
+  .route-path-chain__connector {
+    min-width: 28px;
+    font-size: 12px;
+  }
+
+  .route-card__strategy-metrics,
+  .route-card__level-row {
+    gap: 6px;
+  }
+
+  .route-card__strategy-metrics span,
+  .route-card__level-row span {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+
   .route-card__segment-meta-grid {
     grid-template-columns: 1fr;
   }
 
   .route-card__segment-main {
     grid-template-columns: 1fr;
+    gap: 12px;
   }
 
   .route-card__ticket-links {
     flex-direction: row;
     flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .route-card__ticket-link {
+    flex: 1;
+    min-width: 88px;
   }
 
   .route-feedback-modal__body--with-choices {
@@ -767,5 +809,36 @@
 
   .route-card__path {
     font-size: 17px;
+  }
+
+  .route-card__actions,
+  .external-link-modal__actions,
+  .route-feedback-modal__actions {
+    flex-direction: column;
+  }
+
+  .external-link-modal,
+  .route-feedback-modal {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .external-link-modal__dialog,
+  .route-feedback-modal__dialog {
+    width: 100%;
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    border-radius: 20px 20px 0 0;
+    padding: 20px var(--mobile-page-padding) calc(20px + var(--safe-bottom));
+  }
+}
+
+@media (max-width: 360px) {
+  .route-card {
+    padding: 14px;
+  }
+
+  .route-path-chain {
+    font-size: 15px;
   }
 }

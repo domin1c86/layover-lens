@@ -9,9 +9,12 @@ import AiSearchTab from '../components/AiSearchTab';
 import FavoritesTab from '../components/FavoritesTab';
 import SearchBar, { type AdvancedFilters } from '../components/SearchTab/SearchBar';
 import Footer from '../components/Footer';
+import MobileBottomNav from '../components/MobileBottomNav';
 import './HomePage.css';
 
-const THREE_LINES = 24; // 一行高度，作为展开/缩小的阈值
+const COMPACT_SCROLL_Y = 160;
+const EXPAND_SCROLL_Y = 12;
+const RECOMPACT_SCROLL_DELTA = 24;
 const COMPACT_TRANSITION_MS = 550;
 
 interface HomePageProps {
@@ -93,16 +96,15 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
           return true;
         }
 
-        const topBarHeight = prev ? 80 : 164;
-        const effectiveY = Math.max(0, y - topBarHeight);
-
         let next = prev;
-        // 缩小：展开状态下，从展开点累计向下滚动 >= THREE_LINES 即触发，不限定当前位置
-        if (!prev && y - expandedAtRef.current >= THREE_LINES) {
+        const compactThreshold = Math.max(COMPACT_SCROLL_Y, expandedAtRef.current + RECOMPACT_SCROLL_DELTA);
+
+        // 收起：必须滚过一个稳定阈值，避免搜索栏高度变化造成 scrollY 回弹后反复触发
+        if (!prev && y >= compactThreshold) {
           next = true;
         }
-        // 展开：缩小状态下，距离顶部小于 THREE_LINES 时触发
-        else if (prev && effectiveY < THREE_LINES) {
+        // 展开：只在回到页面顶部附近时自动展开；中间区域通过顶栏 compact search 手动展开
+        else if (prev && y <= EXPAND_SCROLL_Y) {
           next = false;
         }
 
@@ -309,6 +311,8 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
           {activeTab === 'favorites' && <FavoritesTab />}
         </div>
       </div>
+
+      <MobileBottomNav activeTab={activeTab} onTabChange={setActiveTab} />
 
       {(activeTab !== 'ai' || aiFooterOpen) && (
         <div ref={footerRef}>

@@ -248,6 +248,10 @@
   min-width: 0;
 }
 
+.ai-search__mobile-toolbar {
+  display: none;
+}
+
 .ai-search__messages {
   flex: 1;
   overflow-y: auto;
@@ -632,19 +636,183 @@
 }
 
 @media (max-width: 744px) {
+  .ai-search {
+    flex-direction: column;
+    min-height: calc(100dvh - var(--mobile-sticky-top) - var(--mobile-bottom-nav-height));
+  }
+
   .ai-search__sidebar {
     display: none;
   }
+
+  .ai-search__mobile-toolbar {
+    position: sticky;
+    top: var(--mobile-sticky-top);
+    z-index: 80;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    padding: 10px var(--mobile-page-padding);
+    background: var(--canvas);
+    border-bottom: 1px solid var(--hairline-soft);
+  }
+
+  .ai-search__mobile-toolbar button {
+    min-width: 0;
+    min-height: 40px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--rounded-full);
+    background: var(--surface-soft);
+    color: var(--ink);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .ai-search__mobile-toolbar button.active {
+    color: var(--primary);
+    border-color: var(--primary);
+  }
+
+  .ai-search__mobile-toolbar button span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ai-search__main {
+    flex: 1;
+    min-height: 0;
+  }
+
   .ai-search__messages {
-    padding: 24px;
+    padding: 16px var(--mobile-page-padding);
+    gap: 16px;
+    padding-bottom: 148px;
   }
+
   .ai-search__input-area {
-    padding: 12px 24px 24px;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--mobile-bottom-nav-height) + var(--safe-bottom));
+    z-index: 90;
+    padding: 10px var(--mobile-page-padding) 12px;
+    background: color-mix(in srgb, var(--canvas) 96%, transparent);
+    border-top: 1px solid var(--hairline-soft);
+    backdrop-filter: blur(16px);
   }
+
   .ai-search__welcome h2 {
     font-size: 24px;
   }
+
   .ai-search__examples {
     grid-template-columns: 1fr;
+  }
+
+  .ai-search__message {
+    gap: 10px;
+  }
+
+  .ai-search__message-avatar {
+    width: 26px;
+    height: 26px;
+  }
+
+  .ai-search__message-content {
+    max-width: calc(100vw - 72px);
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .ai-search__message-content--results {
+    width: min(100%, calc(100vw - 48px));
+    max-width: calc(100vw - 48px);
+  }
+
+  .ai-search__input-box {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .ai-search__scope-hint,
+  .ai-search__blocked-note {
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+
+  .ai-search__history-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 1150;
+    display: flex;
+    align-items: flex-end;
+    background: rgba(17, 24, 39, 0.42);
+  }
+
+  .ai-search__history-sheet-panel {
+    width: 100%;
+    max-height: 82dvh;
+    display: flex;
+    flex-direction: column;
+    padding: 18px var(--mobile-page-padding) calc(18px + var(--safe-bottom));
+    border-radius: 20px 20px 0 0;
+    background: var(--canvas);
+    box-shadow: 0 -12px 36px rgba(0, 0, 0, 0.18);
+  }
+
+  .ai-search__history-sheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+    color: var(--ink);
+  }
+
+  .ai-search__history-sheet-head button {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--rounded-full);
+    background: var(--surface-soft);
+    color: var(--muted);
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  .ai-search__history--sheet {
+    max-height: 60dvh;
+  }
+
+  .ai-search__history-delete,
+  .ai-search__history-edit {
+    opacity: 1;
+  }
+
+  .ai-route-detail-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .ai-route-detail-card {
+    width: 100%;
+    max-height: calc(100dvh - 24px);
+    border-radius: 20px 20px 0 0;
+    padding: 20px var(--mobile-page-padding) calc(20px + var(--safe-bottom));
+  }
+}
+
+@media (max-width: 360px) {
+  .ai-search__mobile-toolbar {
+    gap: 6px;
+  }
+
+  .ai-search__mobile-toolbar button {
+    font-size: 12px;
+    gap: 4px;
   }
 }

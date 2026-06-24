@@ -1,9 +1,11 @@
 .top-nav {
   height: 80px;
   background: #faf9f5;
-  position: sticky;
+  position: fixed;
   top: 0;
-  z-index: 100;
+  left: 0;
+  right: 0;
+  z-index: 900;
   transition: box-shadow 0.3s ease;
 }
 
@@ -116,7 +118,35 @@
 }
 
 @media (max-width: 744px) {
+  .top-nav {
+    height: var(--mobile-sticky-top);
+  }
+
   .top-nav__tabs { display: none; }
+
+  .top-nav__inner {
+    padding-left: var(--mobile-page-padding);
+    padding-right: var(--mobile-page-padding);
+  }
+
+  .top-nav__logo {
+    min-width: 0;
+    font-size: 18px;
+  }
+
+  .top-nav__logo-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .top-nav__tools {
+    gap: 8px;
+  }
+
+  .icon-btn {
+    width: 38px;
+    height: 38px;
+  }
 }
 
 .dropdown {
