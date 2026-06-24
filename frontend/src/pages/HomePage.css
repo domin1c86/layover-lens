@@ -28,39 +28,28 @@
   box-shadow: var(--shadow-card);
 }
 
+.home-page.search-morphing .home-page__search-bar {
+  z-index: 940;
+}
+
+.home-page.search-morphing .home-page__search-motion,
+.home-page.search-morphing .search-bar {
+  z-index: 941;
+}
+
+.home-page.search-morphing .compact-search {
+  z-index: 942;
+}
+
+.home-page.search-morphing .home-page__search-bar.compact .advanced-search-toggle,
+.home-page.search-morphing .home-page__search-bar.compact .advanced-search {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
 .home-page__search-bar.dark {
   background: #242424;
-}
-
-/* --- Content disappears first --- */
-.home-page__search-bar.compact .search-bar__segment,
-.home-page__search-bar.compact .search-bar__orb,
-.home-page__search-bar.compact .advanced-search-toggle,
-.home-page__search-bar.compact .advanced-search {
-  opacity: 0;
-  transition: opacity 0.08s ease;
-}
-
-/* --- Shell fades out after content --- */
-.home-page__search-bar.compact .search-bar {
-  transform: scale(0.85) translateY(-20px);
-  opacity: 0;
-  transition: transform 0.3s ease 0.08s, opacity 0.2s ease 0.15s;
-}
-
-/* --- Expand: shell fades in first --- */
-.home-page__search-bar:not(.compact) .search-bar {
-  opacity: 1;
-  transform: none;
-  transition: transform 0.35s ease 0.1s, opacity 0.2s ease 0.15s;
-}
-
-/* --- Expand: content appears after shell --- */
-.home-page__search-bar:not(.compact) .search-bar__segment,
-.home-page__search-bar:not(.compact) .search-bar__orb,
-.home-page__search-bar:not(.compact) .advanced-search-toggle {
-  opacity: 1;
-  transition: opacity 0.15s ease 0.35s;
 }
 
 .home-page__search-bar.compact {
@@ -71,6 +60,11 @@
   overflow: visible;
   transition: max-height 0.3s ease 0.15s, padding 0.3s ease 0.15s, box-shadow 0.3s ease;
   box-shadow: none;
+}
+
+.home-page__search-motion {
+  position: relative;
+  z-index: 1;
 }
 
 @media (max-width: 744px) {

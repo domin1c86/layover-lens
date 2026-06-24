@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useTheme } from '../../context/ThemeContext';
 import { useLocale } from '../../context/LocaleContext';
 import { useAuth } from '../../context/AuthContext';
@@ -18,7 +18,16 @@ interface TopNavProps {
   onOpenRegister?: () => void;
 }
 
-export default function TopNav({ activeTab, onTabChange, isCompact = false, compactLabel = '', onCompactClick, onOpenSettings, onOpenLogin, onOpenRegister }: TopNavProps) {
+export default function TopNav({
+  activeTab,
+  onTabChange,
+  isCompact = false,
+  compactLabel = '',
+  onCompactClick,
+  onOpenSettings,
+  onOpenLogin,
+  onOpenRegister,
+}: TopNavProps) {
   const { isDark, toggleTheme } = useTheme();
   const { lang, setLang, t } = useLocale();
   const { isLoggedIn, user, logout } = useAuth();
@@ -96,9 +105,22 @@ export default function TopNav({ activeTab, onTabChange, isCompact = false, comp
           ))}
         </div>
 
-        <div className={`compact-search ${isCompact ? 'visible' : ''}`} onClick={onCompactClick}>
-          <span className="compact-search__label">{compactLabel}</span>
-        </div>
+        <AnimatePresence initial={false}>
+          {isCompact ? (
+            <motion.div
+              key="compact-search"
+              layoutId="travel-search-shell"
+              className="compact-search visible"
+              onClick={onCompactClick}
+              initial={{ opacity: 0, y: 28 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
+            >
+              <span className="compact-search__label">{compactLabel}</span>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
         <div className="top-nav__tools">
           <button className="icon-btn" title={t('topNav.theme')} onClick={toggleTheme}>

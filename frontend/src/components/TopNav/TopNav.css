@@ -355,8 +355,8 @@ html[data-theme="dark"] .dropdown-item:active {
 .compact-search {
   position: absolute;
   left: 50%;
-  top: 62%;
-  transform: translate(-50%, -70%) scale(0.92);
+  top: 16px;
+  translate: -50% 0;
   opacity: 0;
   pointer-events: none;
   display: flex;
@@ -369,7 +369,7 @@ html[data-theme="dark"] .dropdown-item:active {
   border-radius: var(--rounded-full);
   box-shadow: var(--shadow-card);
   cursor: pointer;
-  transition: opacity 0.3s ease, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s;
+  transition: box-shadow 0.2s;
   transition-delay: 0s;
   white-space: nowrap;
   max-width: 420px;
@@ -378,9 +378,7 @@ html[data-theme="dark"] .dropdown-item:active {
 
 .compact-search.visible {
   opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
   pointer-events: auto;
-  transition-delay: 0.15s;
 }
 
 .compact-search:hover {

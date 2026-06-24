@@ -17,6 +17,7 @@ interface SearchBarProps {
   onOptimizeChange: (val: OptimizationTarget) => void;
   onSearch: (advancedFilters: AdvancedFilters) => void;
   loading: boolean;
+  morphLayoutId?: string;
 }
 
 export interface AdvancedFilters {
@@ -392,6 +393,7 @@ export default function SearchBar({
   onOptimizeChange,
   onSearch,
   loading,
+  morphLayoutId,
 }: SearchBarProps) {
   const { lang, t } = useLocale();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -566,7 +568,11 @@ export default function SearchBar({
 
   return (
     <div className="search-combo">
-      <div className={`search-bar ${hasOpenSegment ? 'has-open-segment' : ''}`}>
+      <motion.div
+        layoutId={morphLayoutId}
+        className={`search-bar ${hasOpenSegment ? 'has-open-segment' : ''}`}
+        transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
+      >
         <div className={`search-bar__segment ${fromOpen ? 'open' : ''}`} ref={fromRef} onClick={() => togglePicker('from')}>
           <span className="search-bar__label">{t('searchBar.from')}</span>
           <span className="search-bar__value active">{fromName}</span>
@@ -619,7 +625,7 @@ export default function SearchBar({
         <button className="search-bar__orb" onClick={handleSearch} disabled={loading} title={t('searchBar.search')}>
           <Icon name="actions.search" size={20} />
         </button>
-      </div>
+      </motion.div>
 
       <AnimatePresence>
         {drawerOpen && (

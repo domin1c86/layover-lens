@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import type { City, OptimizationTarget, RoutePlan, RouteRecommendation, SearchRequest } from '../types';
 import { cityApi, searchApi } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
@@ -28,6 +29,8 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
   const { lang, t } = useLocale();
   const [activeTab, setActiveTab] = useState<'search' | 'ai' | 'favorites'>('search');
   const [isCompact, setIsCompact] = useState(false);
+  const [isMorphingSearch, setIsMorphingSearch] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(() => window.matchMedia('(max-width: 744px)').matches);
   const [aiFooterOpen, setAiFooterOpen] = useState(false);
   const footerRef = useRef<HTMLDivElement>(null);
 
@@ -59,6 +62,7 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
 
   const startCompactTransition = useCallback((nextIsCompact: boolean) => {
     isTransitioning.current = true;
+    setIsMorphingSearch(true);
     if (transitionTimeoutRef.current !== undefined) {
       window.clearTimeout(transitionTimeoutRef.current);
     }
@@ -73,12 +77,21 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
       }
 
       transitionTimeoutRef.current = undefined;
+      setIsMorphingSearch(false);
     }, COMPACT_TRANSITION_MS);
   }, []);
 
   useEffect(() => {
     activeTabRef.current = activeTab;
   }, [activeTab]);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 744px)');
+    const handleViewportChange = () => setIsMobileViewport(media.matches);
+    handleViewportChange();
+    media.addEventListener('change', handleViewportChange);
+    return () => media.removeEventListener('change', handleViewportChange);
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -121,6 +134,7 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
       if (transitionTimeoutRef.current !== undefined) {
         window.clearTimeout(transitionTimeoutRef.current);
       }
+      setIsMorphingSearch(false);
     };
   }, [startCompactTransition]);
 
@@ -254,14 +268,16 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
     return `${d.getMonth() + 1}月${d.getDate()}日`;
   };
   const compactLabel = `${fromCityName} → ${toCityName} · ${formatDateLabel(date)}`;
+  const effectiveCompact = isCompact && !isMobileViewport;
 
   return (
-    <div className="home-page">
+    <div className={`home-page ${isMorphingSearch ? 'search-morphing' : ''}`}>
+      <LayoutGroup id="travel-search-morph">
       <div className="home-page__main">
         <TopNav
           activeTab={activeTab}
           onTabChange={setActiveTab}
-          isCompact={isCompact}
+          isCompact={effectiveCompact}
           compactLabel={compactLabel}
           onCompactClick={handleCompactClick}
           onOpenSettings={onOpenSettings}
@@ -269,21 +285,35 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
           onOpenRegister={onOpenRegister}
         />
 
-        <div className={`home-page__search-bar ${isCompact ? 'compact' : ''} ${isDark ? 'dark' : ''}`}>
+        <div className={`home-page__search-bar ${effectiveCompact ? 'compact' : ''} ${isDark ? 'dark' : ''}`}>
           <div className="container">
-            <SearchBar
-              cities={cities}
-              fromCity={fromCity}
-              toCity={toCity}
-              date={date}
-              optimize={optimize}
-              onFromChange={setFromCity}
-              onToChange={setToCity}
-              onDateChange={setDate}
-              onOptimizeChange={setOptimize}
-              onSearch={handleSearch}
-              loading={loading}
-            />
+            <AnimatePresence initial={false}>
+              {!effectiveCompact ? (
+                <motion.div
+                  key="expanded-search"
+                  className="home-page__search-motion"
+                  initial={false}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 1 }}
+                  transition={{ duration: 0 }}
+                >
+                  <SearchBar
+                    cities={cities}
+                    fromCity={fromCity}
+                    toCity={toCity}
+                    date={date}
+                    optimize={optimize}
+                    onFromChange={setFromCity}
+                    onToChange={setToCity}
+                    onDateChange={setDate}
+                    onOptimizeChange={setOptimize}
+                    onSearch={handleSearch}
+                    loading={loading}
+                    morphLayoutId="travel-search-shell"
+                  />
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </div>
         </div>
 
@@ -311,6 +341,7 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
           {activeTab === 'favorites' && <FavoritesTab />}
         </div>
       </div>
+      </LayoutGroup>
 
       <MobileBottomNav activeTab={activeTab} onTabChange={setActiveTab} />
 
