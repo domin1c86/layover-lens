@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { motion } from 'motion/react';
 import { useTheme } from '../../context/ThemeContext';
 import { useLocale } from '../../context/LocaleContext';
 import { useAuth } from '../../context/AuthContext';
@@ -10,9 +10,7 @@ import './TopNav.css';
 interface TopNavProps {
   activeTab: 'search' | 'ai' | 'favorites';
   onTabChange: (tab: 'search' | 'ai' | 'favorites') => void;
-  isCompact?: boolean;
-  compactLabel?: string;
-  onCompactClick?: () => void;
+  searchDockCompact?: boolean;
   onOpenSettings?: () => void;
   onOpenLogin?: () => void;
   onOpenRegister?: () => void;
@@ -21,9 +19,7 @@ interface TopNavProps {
 export default function TopNav({
   activeTab,
   onTabChange,
-  isCompact = false,
-  compactLabel = '',
-  onCompactClick,
+  searchDockCompact = false,
   onOpenSettings,
   onOpenLogin,
   onOpenRegister,
@@ -61,14 +57,14 @@ export default function TopNav({
   };
 
   return (
-    <nav className={`top-nav ${isCompact ? 'compact' : ''} ${isDark ? 'dark' : ''}`}>
+    <nav className={`top-nav ${searchDockCompact ? 'search-dock-compact' : ''} ${isDark ? 'dark' : ''}`}>
       <div className="container top-nav__inner">
         <a href="#" className="top-nav__logo">
           <div className="top-nav__logo-icon"><Icon name="nav.logo" /></div>
           <span>中转助手</span>
         </a>
 
-        <div className={`top-nav__tabs ${isCompact ? 'hidden' : ''}`}>
+        <div className={`top-nav__tabs ${searchDockCompact ? 'hidden' : ''}`}>
           {TABS.map((t) => (
             <div
               key={t.key}
@@ -80,7 +76,7 @@ export default function TopNav({
           ))}
         </div>
 
-        <div className={`tab-indicator ${isCompact ? 'visible' : ''}`}>
+        <div className={`tab-indicator ${searchDockCompact ? 'visible' : ''}`}>
           {TABS.map((t) => (
             <motion.div
               key={t.key}
@@ -104,23 +100,6 @@ export default function TopNav({
             </motion.div>
           ))}
         </div>
-
-        <AnimatePresence initial={false}>
-          {isCompact ? (
-            <motion.div
-              key="compact-search"
-              layoutId="travel-search-shell"
-              className="compact-search visible"
-              onClick={onCompactClick}
-              initial={{ opacity: 0, y: 28 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
-            >
-              <span className="compact-search__label">{compactLabel}</span>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
 
         <div className="top-nav__tools">
           <button className="icon-btn" title={t('topNav.theme')} onClick={toggleTheme}>

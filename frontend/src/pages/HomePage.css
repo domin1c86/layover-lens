@@ -13,80 +13,16 @@
 }
 
 /* ========================================
-   SEARCH BAR
+   FLOATING SEARCH PLACEHOLDER
    ======================================== */
-.home-page__search-bar {
-  padding-top: 4px;
-  padding-bottom: var(--space-base);
-  position: sticky;
-  top: 80px;
-  background: #faf9f5;
-  z-index: 90;
-  transition: max-height 0.35s ease 0.1s, padding 0.35s ease 0.1s, box-shadow 0.35s ease;
-  max-height: 120px;
-  overflow: visible;
-  box-shadow: var(--shadow-card);
+.home-page__search-placeholder {
+  height: 120px;
+  flex: 0 0 120px;
 }
 
-.home-page.search-morphing .home-page__search-bar {
-  z-index: 940;
-}
-
-.home-page.search-morphing .home-page__search-motion,
-.home-page.search-morphing .search-bar {
-  z-index: 941;
-}
-
-.home-page.search-morphing .compact-search {
-  z-index: 942;
-}
-
-.home-page.search-morphing .home-page__search-bar.compact .advanced-search-toggle,
-.home-page.search-morphing .home-page__search-bar.compact .advanced-search {
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.12s ease;
-}
-
-.home-page__search-bar.dark {
-  background: #242424;
-}
-
-.home-page__search-bar.compact {
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  pointer-events: none;
-  overflow: visible;
-  transition: max-height 0.3s ease 0.15s, padding 0.3s ease 0.15s, box-shadow 0.3s ease;
-  box-shadow: none;
-}
-
-.home-page__search-motion {
-  position: relative;
-  z-index: 1;
-}
-
-@media (max-width: 744px) {
-  .home-page__search-bar.compact {
-    max-height: 120px;
-    padding-top: 4px;
-    padding-bottom: var(--space-base);
-    pointer-events: auto;
-    box-shadow: var(--shadow-card);
-  }
-
-  .home-page__search-bar.compact .search-bar {
-    transform: none;
-    opacity: 1;
-  }
-
-  .home-page__search-bar.compact .search-bar__segment,
-  .home-page__search-bar.compact .search-bar__orb,
-  .home-page__search-bar.compact .advanced-search-toggle,
-  .home-page__search-bar.compact .advanced-search {
-    opacity: 1;
-  }
+.home-page__search-placeholder--ai {
+  height: 0;
+  flex-basis: 0;
 }
 
 .home-page__content {
@@ -111,15 +47,14 @@
     padding-top: var(--mobile-sticky-top);
   }
 
-  .home-page__search-bar {
-    top: var(--mobile-sticky-top);
-    max-height: none;
-    padding-top: 8px;
-    padding-bottom: 10px;
+  .home-page__search-placeholder {
+    height: 244px;
+    flex-basis: 244px;
   }
 
-  .home-page__search-bar.compact {
-    max-height: none;
+  .home-page__search-placeholder--ai {
+    height: 64px;
+    flex-basis: 64px;
   }
 
   .home-page__content {

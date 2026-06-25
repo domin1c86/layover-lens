@@ -1,22 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import type { City, OptimizationTarget, RoutePlan, RouteRecommendation, SearchRequest } from '../types';
 import { cityApi, searchApi } from '../services/api';
-import { useTheme } from '../context/ThemeContext';
 import { useLocale } from '../context/LocaleContext';
 import TopNav from '../components/TopNav';
 import SearchTab from '../components/SearchTab';
 import AiSearchTab from '../components/AiSearchTab';
 import FavoritesTab from '../components/FavoritesTab';
-import SearchBar, { type AdvancedFilters } from '../components/SearchTab/SearchBar';
+import { type AdvancedFilters } from '../components/SearchTab/SearchBar';
+import FloatingSearchDock from '../components/FloatingSearchDock';
 import Footer from '../components/Footer';
 import MobileBottomNav from '../components/MobileBottomNav';
 import './HomePage.css';
-
-const COMPACT_SCROLL_Y = 160;
-const EXPAND_SCROLL_Y = 12;
-const RECOMPACT_SCROLL_DELTA = 24;
-const COMPACT_TRANSITION_MS = 550;
 
 interface HomePageProps {
   onOpenSettings?: () => void
@@ -25,12 +19,9 @@ interface HomePageProps {
 }
 
 export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }: HomePageProps) {
-  const { isDark } = useTheme();
-  const { lang, t } = useLocale();
+  const { t } = useLocale();
   const [activeTab, setActiveTab] = useState<'search' | 'ai' | 'favorites'>('search');
-  const [isCompact, setIsCompact] = useState(false);
-  const [isMorphingSearch, setIsMorphingSearch] = useState(false);
-  const [isMobileViewport, setIsMobileViewport] = useState(() => window.matchMedia('(max-width: 744px)').matches);
+  const [searchDockCompact, setSearchDockCompact] = useState(false);
   const [aiFooterOpen, setAiFooterOpen] = useState(false);
   const footerRef = useRef<HTMLDivElement>(null);
 
@@ -53,107 +44,12 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
   const [error, setError] = useState('');
   const [searched, setSearched] = useState(false);
 
-  const isTransitioning = useRef(false);
-  const lastScrollY = useRef(window.scrollY);
-  const activeTabRef = useRef(activeTab);
-  const prevActiveTabRef = useRef(activeTab);
-  const expandedAtRef = useRef(window.scrollY);
-  const transitionTimeoutRef = useRef<number | undefined>();
-
-  const startCompactTransition = useCallback((nextIsCompact: boolean) => {
-    isTransitioning.current = true;
-    setIsMorphingSearch(true);
-    if (transitionTimeoutRef.current !== undefined) {
-      window.clearTimeout(transitionTimeoutRef.current);
-    }
-
-    transitionTimeoutRef.current = window.setTimeout(() => {
-      isTransitioning.current = false;
-      const currentY = window.scrollY;
-      lastScrollY.current = currentY;
-
-      if (!nextIsCompact) {
-        expandedAtRef.current = currentY;
-      }
-
-      transitionTimeoutRef.current = undefined;
-      setIsMorphingSearch(false);
-    }, COMPACT_TRANSITION_MS);
-  }, []);
-
-  useEffect(() => {
-    activeTabRef.current = activeTab;
-  }, [activeTab]);
-
-  useEffect(() => {
-    const media = window.matchMedia('(max-width: 744px)');
-    const handleViewportChange = () => setIsMobileViewport(media.matches);
-    handleViewportChange();
-    media.addEventListener('change', handleViewportChange);
-    return () => media.removeEventListener('change', handleViewportChange);
-  }, []);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      if (isTransitioning.current) return;
-
-      const y = window.scrollY;
-      lastScrollY.current = y;
-
-      setIsCompact((prev) => {
-        // AI 搜索标签页强制保持 compact
-        if (activeTabRef.current === 'ai') {
-          if (!prev) {
-            startCompactTransition(true);
-          }
-          return true;
-        }
-
-        let next = prev;
-        const compactThreshold = Math.max(COMPACT_SCROLL_Y, expandedAtRef.current + RECOMPACT_SCROLL_DELTA);
-
-        // 收起：必须滚过一个稳定阈值，避免搜索栏高度变化造成 scrollY 回弹后反复触发
-        if (!prev && y >= compactThreshold) {
-          next = true;
-        }
-        // 展开：只在回到页面顶部附近时自动展开；中间区域通过顶栏 compact search 手动展开
-        else if (prev && y <= EXPAND_SCROLL_Y) {
-          next = false;
-        }
-
-        if (next !== prev) {
-          startCompactTransition(next);
-        }
-        return next;
-      });
-    };
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    handleScroll();
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-      if (transitionTimeoutRef.current !== undefined) {
-        window.clearTimeout(transitionTimeoutRef.current);
-      }
-      setIsMorphingSearch(false);
-    };
-  }, [startCompactTransition]);
-
-  useEffect(() => {
-    if (prevActiveTabRef.current === activeTab) return;
-    prevActiveTabRef.current = activeTab;
-
-    if (activeTab === 'ai') {
-      setIsCompact(true);
-      startCompactTransition(true);
-    } else {
-      setIsCompact(false);
-      startCompactTransition(false);
-    }
-  }, [activeTab, startCompactTransition]);
-
   useEffect(() => {
     if (activeTab !== 'ai') {
       setAiFooterOpen(false);
+    }
+    if (activeTab !== 'search') {
+      setSearchDockCompact(false);
     }
   }, [activeTab]);
 
@@ -251,71 +147,37 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
     setToCity(toCode);
   }, [cities]);
 
-  const handleCompactClick = useCallback(() => {
-    if (activeTab === 'ai') return;
-    setIsCompact(false);
-    startCompactTransition(false);
-  }, [activeTab, startCompactTransition]);
-
-  const fromCityName = cities.find((c) => c.code === fromCity)?.name || fromCity;
-  const toCityName = cities.find((c) => c.code === toCity)?.name || toCity;
-  const formatDateLabel = (iso: string) => {
-    if (!iso) return '';
-    const d = new Date(iso + 'T00:00:00');
-    if (lang === 'en') {
-      return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-    }
-    return `${d.getMonth() + 1}月${d.getDate()}日`;
-  };
-  const compactLabel = `${fromCityName} → ${toCityName} · ${formatDateLabel(date)}`;
-  const effectiveCompact = isCompact && !isMobileViewport;
+  const searchDockBehavior: 'scroll' | 'temporary' = activeTab === 'ai' ? 'temporary' : 'scroll';
+  const topNavSearchCompact = activeTab === 'ai' || searchDockCompact;
 
   return (
-    <div className={`home-page ${isMorphingSearch ? 'search-morphing' : ''}`}>
-      <LayoutGroup id="travel-search-morph">
+    <div className="home-page">
       <div className="home-page__main">
         <TopNav
           activeTab={activeTab}
           onTabChange={setActiveTab}
-          isCompact={effectiveCompact}
-          compactLabel={compactLabel}
-          onCompactClick={handleCompactClick}
+          searchDockCompact={topNavSearchCompact}
           onOpenSettings={onOpenSettings}
           onOpenLogin={onOpenLogin}
           onOpenRegister={onOpenRegister}
         />
 
-        <div className={`home-page__search-bar ${effectiveCompact ? 'compact' : ''} ${isDark ? 'dark' : ''}`}>
-          <div className="container">
-            <AnimatePresence initial={false}>
-              {!effectiveCompact ? (
-                <motion.div
-                  key="expanded-search"
-                  className="home-page__search-motion"
-                  initial={false}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 1 }}
-                  transition={{ duration: 0 }}
-                >
-                  <SearchBar
-                    cities={cities}
-                    fromCity={fromCity}
-                    toCity={toCity}
-                    date={date}
-                    optimize={optimize}
-                    onFromChange={setFromCity}
-                    onToChange={setToCity}
-                    onDateChange={setDate}
-                    onOptimizeChange={setOptimize}
-                    onSearch={handleSearch}
-                    loading={loading}
-                    morphLayoutId="travel-search-shell"
-                  />
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
-          </div>
-        </div>
+        <div className={`home-page__search-placeholder home-page__search-placeholder--${activeTab}`} />
+        <FloatingSearchDock
+          behavior={searchDockBehavior}
+          cities={cities}
+          fromCity={fromCity}
+          toCity={toCity}
+          date={date}
+          optimize={optimize}
+          onFromChange={setFromCity}
+          onToChange={setToCity}
+          onDateChange={setDate}
+          onOptimizeChange={setOptimize}
+          onSearch={handleSearch}
+          loading={loading}
+          onCompactChange={setSearchDockCompact}
+        />
 
         <div className="home-page__content">
           {activeTab === 'search' && (
@@ -341,7 +203,6 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
           {activeTab === 'favorites' && <FavoritesTab />}
         </div>
       </div>
-      </LayoutGroup>
 
       <MobileBottomNav activeTab={activeTab} onTabChange={setActiveTab} />
 

@@ -17,7 +17,10 @@ interface SearchBarProps {
   onOptimizeChange: (val: OptimizationTarget) => void;
   onSearch: (advancedFilters: AdvancedFilters) => void;
   loading: boolean;
-  morphLayoutId?: string;
+  mode?: 'expanded' | 'compact-summary';
+  variant?: 'desktop' | 'mobile';
+  onRequestExpand?: () => void;
+  forceCloseOverlaysSignal?: number;
 }
 
 export interface AdvancedFilters {
@@ -393,7 +396,10 @@ export default function SearchBar({
   onOptimizeChange,
   onSearch,
   loading,
-  morphLayoutId,
+  mode = 'expanded',
+  variant = 'desktop',
+  onRequestExpand,
+  forceCloseOverlaysSignal = 0,
 }: SearchBarProps) {
   const { lang, t } = useLocale();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -566,10 +572,52 @@ export default function SearchBar({
 
   const hasOpenSegment = fromOpen || toOpen || dateOpen || optOpen;
 
+  const closeOverlays = () => {
+    setFromOpen(false);
+    setToOpen(false);
+    setDateOpen(false);
+    setOptOpen(false);
+    setDrawerOpen(false);
+    setTransferOpen(false);
+    setTransferPickerOpen(false);
+    setTransferTimePickerOpen(false);
+  };
+
+  useEffect(() => {
+    closeOverlays();
+  }, [forceCloseOverlaysSignal]);
+
+  useEffect(() => {
+    if (mode === 'compact-summary') {
+      closeOverlays();
+    }
+  }, [mode]);
+
+  if (mode === 'compact-summary') {
+    return (
+      <div className={`search-combo search-combo--${variant} search-combo--compact-summary`}>
+        <motion.button
+          type="button"
+          className="search-bar search-bar--compact-summary"
+          onClick={onRequestExpand}
+          initial={false}
+          animate={{ opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
+        >
+          <span className="search-bar__summary-label">
+            {fromName} → {toName} · {formatDateLabel(date)}
+          </span>
+          <span className="search-bar__summary-icon">
+            <Icon name="actions.search" size={16} />
+          </span>
+        </motion.button>
+      </div>
+    );
+  }
+
   return (
-    <div className="search-combo">
+    <div className={`search-combo search-combo--${variant}`}>
       <motion.div
-        layoutId={morphLayoutId}
         className={`search-bar ${hasOpenSegment ? 'has-open-segment' : ''}`}
         transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
       >
