@@ -43,13 +43,26 @@
     padding-bottom: calc(var(--mobile-bottom-nav-height) + var(--safe-bottom));
   }
 
+  .home-page--ai:not(.home-page--ai-footer-open) {
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+    padding-bottom: 0;
+  }
+
   .home-page__main {
     padding-top: var(--mobile-sticky-top);
   }
 
+  .home-page--ai:not(.home-page--ai-footer-open) .home-page__main {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
   .home-page__search-placeholder {
-    height: 244px;
-    flex-basis: 244px;
+    height: 112px;
+    flex-basis: 112px;
   }
 
   .home-page__search-placeholder--ai {
@@ -59,5 +72,11 @@
 
   .home-page__content {
     min-width: 0;
+  }
+
+  .home-page--ai:not(.home-page--ai-footer-open) .home-page__content,
+  .home-page--ai:not(.home-page--ai-footer-open) .home-page__tab-panel {
+    min-height: 0;
+    overflow: hidden;
   }
 }

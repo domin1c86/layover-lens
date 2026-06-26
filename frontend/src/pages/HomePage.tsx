@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { City, OptimizationTarget, RoutePlan, RouteRecommendation, SearchRequest } from '../types';
 import { cityApi, searchApi } from '../services/api';
+import { AI_SEARCH_ENABLED } from '../config/features';
 import { useLocale } from '../context/LocaleContext';
+import { useAuth } from '../context/AuthContext';
 import TopNav from '../components/TopNav';
 import SearchTab from '../components/SearchTab';
 import AiSearchTab from '../components/AiSearchTab';
@@ -18,16 +20,21 @@ interface HomePageProps {
   onOpenRegister?: () => void
 }
 
+const DEFAULT_FROM_CITY_CODE = 'BJ';
+const DEFAULT_TO_CITY_CODE = 'SH';
+
 export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }: HomePageProps) {
   const { t } = useLocale();
+  const { isLoggedIn } = useAuth();
+  const showAiSearch = AI_SEARCH_ENABLED && isLoggedIn;
   const [activeTab, setActiveTab] = useState<'search' | 'ai' | 'favorites'>('search');
   const [searchDockCompact, setSearchDockCompact] = useState(false);
   const [aiFooterOpen, setAiFooterOpen] = useState(false);
   const footerRef = useRef<HTMLDivElement>(null);
 
   const [cities, setCities] = useState<City[]>([]);
-  const [fromCity, setFromCity] = useState('');
-  const [toCity, setToCity] = useState('');
+  const [fromCity, setFromCity] = useState(DEFAULT_FROM_CITY_CODE);
+  const [toCity, setToCity] = useState(DEFAULT_TO_CITY_CODE);
   const [date, setDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split('T')[0];
@@ -45,21 +52,27 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
   const [searched, setSearched] = useState(false);
 
   useEffect(() => {
+    if (!showAiSearch && activeTab === 'ai') {
+      setActiveTab('search');
+      setAiFooterOpen(false);
+      setSearchDockCompact(false);
+      return;
+    }
     if (activeTab !== 'ai') {
       setAiFooterOpen(false);
     }
     if (activeTab !== 'search') {
       setSearchDockCompact(false);
     }
-  }, [activeTab]);
+  }, [activeTab, showAiSearch]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (!aiFooterOpen) return;
       const target = e.target as Node;
       if (footerRef.current?.contains(target)) return;
-      const aboutBtn = document.querySelector('[data-about-btn]');
-      if (aboutBtn?.contains(target)) return;
+      const aboutButtons = Array.from(document.querySelectorAll('[data-about-btn]'));
+      if (aboutButtons.some((button) => button.contains(target))) return;
       setAiFooterOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -69,8 +82,10 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
   useEffect(() => {
     cityApi.getCities().then((data) => {
       setCities(data);
-      if (data.length > 0) setFromCity(data[0].code);
-      if (data.length > 1) setToCity(data[1].code);
+      const defaultFrom = data.find((city) => city.code === DEFAULT_FROM_CITY_CODE || city.name === '北京');
+      const defaultTo = data.find((city) => city.code === DEFAULT_TO_CITY_CODE || city.name === '上海');
+      if (defaultFrom) setFromCity(defaultFrom.code);
+      if (defaultTo) setToCity(defaultTo.code);
     }).catch(() => setError(t('errors.loadCitiesFailed')));
   }, []);
 
@@ -151,12 +166,13 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
   const topNavSearchCompact = activeTab === 'ai' || searchDockCompact;
 
   return (
-    <div className="home-page">
+    <div className={`home-page home-page--${activeTab} ${activeTab === 'ai' && aiFooterOpen ? 'home-page--ai-footer-open' : ''}`}>
       <div className="home-page__main">
         <TopNav
           activeTab={activeTab}
           onTabChange={setActiveTab}
           searchDockCompact={topNavSearchCompact}
+          showAiSearch={showAiSearch}
           onOpenSettings={onOpenSettings}
           onOpenLogin={onOpenLogin}
           onOpenRegister={onOpenRegister}
@@ -195,7 +211,7 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
               onQuickSearch={handleQuickSearch}
             />
           )}
-          {activeTab === 'ai' && (
+          {activeTab === 'ai' && showAiSearch && (
             <div className="home-page__tab-panel">
               <AiSearchTab aboutOpen={aiFooterOpen} onToggleAbout={() => setAiFooterOpen((prev) => !prev)} />
             </div>
@@ -204,7 +220,7 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
         </div>
       </div>
 
-      <MobileBottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+      <MobileBottomNav activeTab={activeTab} onTabChange={setActiveTab} showAiSearch={showAiSearch} />
 
       {(activeTab !== 'ai' || aiFooterOpen) && (
         <div ref={footerRef}>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { animate, motion, useMotionValue, useMotionValueEvent, useScroll, useTransform } from 'motion/react';
 import type { City, OptimizationTarget } from '../../types';
+import { useLocale } from '../../context/LocaleContext';
 import SearchBar, { type AdvancedFilters } from '../SearchTab/SearchBar';
 import './FloatingSearchDock.css';
 
@@ -27,12 +28,49 @@ interface FloatingSearchDockProps {
   autoCollapseMs?: number;
 }
 
-function getViewportMetrics() {
+function estimateTextWidth(text: string, font: string) {
+  if (typeof document !== 'undefined') {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (context) {
+      context.font = font;
+      return context.measureText(text).width;
+    }
+  }
+
+  return Array.from(text).reduce((total, char) => {
+    if (/[\u4e00-\u9fff]/.test(char)) return total + 15;
+    if (/[A-Z]/.test(char)) return total + 8;
+    if (/\s/.test(char)) return total + 4;
+    return total + 7;
+  }, 0);
+}
+
+function formatCompactDateLabel(iso: string, lang: 'zh' | 'en') {
+  if (!iso) return lang === 'en' ? 'Select date' : '选择日期';
+  const date = new Date(`${iso}T00:00:00`);
+  if (lang === 'en') {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+  return `${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+function getCityDisplayName(cities: City[], code: string, lang: 'zh' | 'en') {
+  const city = cities.find((item) => item.code === code);
+  return city?.[lang === 'en' ? 'name_en' : 'name'] || code;
+}
+
+function getViewportMetrics(compactLabel = '') {
   const width = window.innerWidth;
   const isMobile = width <= MOBILE_BREAKPOINT;
   const mobilePadding = width <= 360 ? 12 : 16;
   const expandedWidth = isMobile ? width - mobilePadding * 2 : Math.min(720, width - 160);
-  const compactWidth = isMobile ? width - mobilePadding * 2 : Math.min(420, Math.max(280, width - 604));
+  const compactSummaryWidth = compactLabel
+    ? Math.ceil(estimateTextWidth(compactLabel, '600 13px MiSans, Inter, system-ui, sans-serif') + 26 + 8 + 28)
+    : 236;
+  const compactWidth = isMobile
+    ? Math.min(expandedWidth - 16, Math.max(width <= 360 ? 188 : 204, compactSummaryWidth))
+    : Math.min(420, Math.max(280, width - 604));
 
   return {
     width,
@@ -41,8 +79,8 @@ function getViewportMetrics() {
     compactWidth,
     expandedTop: isMobile ? 72 : 84,
     compactTop: isMobile ? 72 : 16,
-    expandedHeight: isMobile ? 228 : 96,
-    compactHeight: 48,
+    expandedHeight: isMobile ? 84 : 96,
+    compactHeight: isMobile ? 42 : 48,
   };
 }
 
@@ -62,10 +100,18 @@ export default function FloatingSearchDock({
   onCompactChange,
   autoCollapseMs = 15000,
 }: FloatingSearchDockProps) {
-  const [metrics, setMetrics] = useState(getViewportMetrics);
+  const { lang } = useLocale();
+  const compactLabel = useMemo(() => {
+    const fromName = getCityDisplayName(cities, fromCity, lang);
+    const toName = getCityDisplayName(cities, toCity, lang);
+    return `${fromName} → ${toName} · ${formatCompactDateLabel(date, lang)}`;
+  }, [cities, date, fromCity, lang, toCity]);
+  const [metrics, setMetrics] = useState(() => getViewportMetrics(compactLabel));
   const [mode, setMode] = useState<'expanded' | 'compact-summary'>('expanded');
   const [temporaryExpanded, setTemporaryExpanded] = useState(false);
   const [manualExpanded, setManualExpanded] = useState(false);
+  const [isPastTop, setIsPastTop] = useState(() => window.scrollY > 2);
+  const mobileOutsideCollapsedRef = useRef(false);
   const [forceCloseOverlaysSignal, setForceCloseOverlaysSignal] = useState(0);
   const dockRef = useRef<HTMLDivElement>(null);
   const { scrollY } = useScroll();
@@ -74,14 +120,31 @@ export default function FloatingSearchDock({
   const scrollSessionTimeoutRef = useRef<number | undefined>();
   const autoCollapseTimeoutRef = useRef<number | undefined>();
   const manualExpandAnimationRef = useRef<ReturnType<typeof animate> | null>(null);
+  const manualTargetCompactRef = useRef(false);
+  const outsideCollapseAtRef = useRef(0);
   const lastScrollYRef = useRef(window.scrollY);
+  const isPastTopRef = useRef(window.scrollY > 2);
   const lastCompactRef = useRef(false);
   const manualExpandedAtRef = useRef(0);
 
   useEffect(() => {
-    const handleResize = () => setMetrics(getViewportMetrics());
+    const handleResize = () => setMetrics(getViewportMetrics(compactLabel));
+    handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, [compactLabel]);
+
+  useEffect(() => {
+    const updatePastTop = () => {
+      const nextIsPastTop = window.scrollY > 2;
+      if (nextIsPastTop === isPastTopRef.current) return;
+      isPastTopRef.current = nextIsPastTop;
+      setIsPastTop(nextIsPastTop);
+    };
+
+    updatePastTop();
+    window.addEventListener('scroll', updatePastTop, { passive: true });
+    return () => window.removeEventListener('scroll', updatePastTop);
   }, []);
 
   const scrollRange = metrics.isMobile ? MOBILE_SCROLL_RANGE : DESKTOP_SCROLL_RANGE;
@@ -98,6 +161,19 @@ export default function FloatingSearchDock({
 
   useMotionValueEvent(scrollY, 'change', (current) => {
     if (behavior !== 'scroll') return;
+
+    const nextIsPastTop = current > 2;
+    if (nextIsPastTop !== isPastTopRef.current) {
+      isPastTopRef.current = nextIsPastTop;
+      setIsPastTop(nextIsPastTop);
+    }
+
+    if (metrics.isMobile && mobileOutsideCollapsedRef.current && current <= 2) {
+      mobileOutsideCollapsedRef.current = false;
+      lastCompactRef.current = false;
+      setMode('expanded');
+      onCompactChange?.(false);
+    }
 
     if (manualExpanded) {
       const recompactDelta = metrics.isMobile ? MOBILE_MANUAL_RECOMPACT_DELTA : DESKTOP_MANUAL_RECOMPACT_DELTA;
@@ -138,6 +214,15 @@ export default function FloatingSearchDock({
     if (behavior !== 'scroll') return;
     if (manualExpanded) return;
 
+    if (metrics.isMobile && mobileOutsideCollapsedRef.current && window.scrollY > 2) {
+      if (mode !== 'compact-summary') {
+        lastCompactRef.current = true;
+        setMode('compact-summary');
+        onCompactChange?.(false);
+      }
+      return;
+    }
+
     const nextCompact = latest >= compactThreshold;
     if (nextCompact !== lastCompactRef.current) {
       lastCompactRef.current = nextCompact;
@@ -156,7 +241,19 @@ export default function FloatingSearchDock({
 
     if (manualExpanded) {
       lastCompactRef.current = false;
-      setMode('expanded');
+      if (manualTargetCompactRef.current) {
+        setMode('compact-summary');
+        onCompactChange?.(!metrics.isMobile);
+      } else {
+        setMode('expanded');
+        onCompactChange?.(false);
+      }
+      return;
+    }
+
+    if (metrics.isMobile && mobileOutsideCollapsedRef.current && window.scrollY > 2) {
+      lastCompactRef.current = true;
+      setMode('compact-summary');
       onCompactChange?.(false);
       return;
     }
@@ -191,19 +288,67 @@ export default function FloatingSearchDock({
     };
   }, [autoCollapseMs, behavior, temporaryExpanded]);
 
-  useEffect(() => {
-    if (behavior !== 'temporary' || !temporaryExpanded) return;
+  const collapseScrollDock = () => {
+    const currentProgress = Math.min(1, Math.max(0, window.scrollY / scrollRange));
+    manualExpandAnimationRef.current?.stop();
+    manualCollapseProgress.set(currentProgress);
+    mobileOutsideCollapsedRef.current = metrics.isMobile;
+    manualTargetCompactRef.current = true;
+    lastCompactRef.current = true;
+    setManualExpanded(true);
+    setMode('compact-summary');
+    setForceCloseOverlaysSignal((value) => value + 1);
+    onCompactChange?.(!metrics.isMobile);
 
-    const handlePointerDown = (event: PointerEvent) => {
+    const controls = animate(manualCollapseProgress, 1, {
+      type: 'spring',
+      stiffness: 420,
+      damping: 38,
+      mass: 0.9,
+    });
+    manualExpandAnimationRef.current = controls;
+    void controls.then(() => {
+      if (manualExpandAnimationRef.current !== controls) return;
+      setManualExpanded(false);
+      manualTargetCompactRef.current = false;
+      manualExpandAnimationRef.current = null;
+    });
+  };
+
+  useEffect(() => {
+    const shouldListenForOutsideClick = behavior === 'temporary'
+      ? temporaryExpanded
+      : metrics.isMobile && mode === 'expanded';
+
+    if (!shouldListenForOutsideClick) return;
+
+    const handleOutsideInteraction = (event: MouseEvent | PointerEvent) => {
       const target = event.target as Node;
       if (dockRef.current?.contains(target)) return;
-      setTemporaryExpanded(false);
-      setForceCloseOverlaysSignal((value) => value + 1);
+      if (document.querySelector('.top-nav')?.contains(target)) return;
+
+      if (behavior === 'temporary') {
+        setTemporaryExpanded(false);
+        setForceCloseOverlaysSignal((value) => value + 1);
+        return;
+      }
+
+      if (window.scrollY <= 2) return;
+      const now = Date.now();
+      if (now - outsideCollapseAtRef.current < 180) return;
+      outsideCollapseAtRef.current = now;
+      collapseScrollDock();
     };
 
-    document.addEventListener('pointerdown', handlePointerDown);
-    return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [behavior, temporaryExpanded]);
+    document.addEventListener('pointerdown', handleOutsideInteraction, true);
+    document.addEventListener('mousedown', handleOutsideInteraction, true);
+    document.addEventListener('click', handleOutsideInteraction, true);
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideInteraction, true);
+      document.removeEventListener('mousedown', handleOutsideInteraction, true);
+      document.removeEventListener('click', handleOutsideInteraction, true);
+    };
+  }, [behavior, metrics.isMobile, mode, scrollRange, temporaryExpanded]);
 
   useEffect(() => {
     return () => {
@@ -232,6 +377,8 @@ export default function FloatingSearchDock({
       return;
     }
 
+    mobileOutsideCollapsedRef.current = false;
+    manualTargetCompactRef.current = false;
     manualExpandedAtRef.current = window.scrollY;
     const currentProgress = Math.min(1, Math.max(0, window.scrollY / scrollRange));
     manualExpandAnimationRef.current?.stop();
@@ -258,6 +405,24 @@ export default function FloatingSearchDock({
     }
     : undefined;
 
+  const shouldRenderOutsideHitarea = metrics.isMobile
+    && mode === 'expanded'
+    && (
+      (behavior === 'temporary' && temporaryExpanded)
+      || (behavior === 'scroll' && isPastTop)
+    );
+
+  const handleOutsideHitareaClick = () => {
+    if (behavior === 'temporary') {
+      setTemporaryExpanded(false);
+      setForceCloseOverlaysSignal((value) => value + 1);
+      return;
+    }
+
+    if (window.scrollY <= 2) return;
+    collapseScrollDock();
+  };
+
   return (
     <motion.div
       ref={dockRef}
@@ -270,6 +435,14 @@ export default function FloatingSearchDock({
       animate={temporaryLayout}
       transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
     >
+      {shouldRenderOutsideHitarea && (
+        <button
+          type="button"
+          className="floating-search-dock__outside-hitarea"
+          aria-label="Collapse search"
+          onClick={handleOutsideHitareaClick}
+        />
+      )}
       <SearchBar
         cities={cities}
         fromCity={fromCity}

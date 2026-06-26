@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import type { AiSessionResponse, AiSessionStatus, AiStreamEvent, SearchRequest } from '../../types';
 import { aiSearchApi } from '../../services/api';
+import { AI_SEARCH_ENABLED } from '../../config/features';
 import { useLocale } from '../../context/LocaleContext';
 import { useAuth } from '../../context/AuthContext';
 import { Icon } from '../../icons';
@@ -25,7 +26,6 @@ interface AiSearchTabProps {
 }
 
 let nextSessionId = 1;
-const AI_SEARCH_ENABLED = import.meta.env.VITE_AI_SEARCH_ENABLED === 'true';
 
 function createEmptySession(title: string): Session {
   return {
@@ -61,6 +61,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
+  const [mobileToolsCollapsed, setMobileToolsCollapsed] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const activeSession = sessions.find((session) => session.id === activeSessionId) || sessions[0];
@@ -321,7 +322,7 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
   );
 
   return (
-    <div className="ai-search">
+    <div className={`ai-search ${mobileToolsCollapsed ? 'ai-search--mobile-tools-collapsed' : ''}`}>
       <div className="ai-search__sidebar">
         <button className="ai-search__new-chat" onClick={newChat}>
           <span className="ai-search__new-chat-icon"><Icon name="actions.add" /></span>
@@ -338,20 +339,44 @@ export default function AiSearchTab({ aboutOpen, onToggleAbout }: AiSearchTabPro
           {t('aiChat.about')}
         </button>
       </div>
-      <div className="ai-search__mobile-toolbar">
-        <button type="button" onClick={newChat}>
-          <Icon name="actions.add" />
-          <span>{t('aiChat.newChat')}</span>
-        </button>
-        <button type="button" onClick={() => setMobileHistoryOpen(true)}>
-          <Icon name="nav.hamburger" />
-          <span>{lang === 'en' ? 'History' : '历史'}</span>
-        </button>
-        <button type="button" className={aboutOpen ? 'active' : ''} data-about-btn onClick={onToggleAbout}>
-          <span aria-hidden="true">?</span>
-          <span>{t('aiChat.about')}</span>
-        </button>
-      </div>
+      <button
+        type="button"
+        className={`ai-search__mobile-toolbar-toggle ${mobileToolsCollapsed ? 'collapsed' : ''}`}
+        aria-label={mobileToolsCollapsed ? (lang === 'en' ? 'Expand AI tools' : '展开 AI 工具') : (lang === 'en' ? 'Collapse AI tools' : '收起 AI 工具')}
+        onClick={() => setMobileToolsCollapsed((previous) => !previous)}
+      >
+        <span aria-hidden="true">{mobileToolsCollapsed ? '+' : '−'}</span>
+      </button>
+      <AnimatePresence initial={false}>
+        {!mobileToolsCollapsed ? (
+          <motion.div
+            className="ai-search__mobile-toolbar"
+            initial={{ opacity: 0, y: -10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.98 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <button type="button" onClick={newChat}>
+              <Icon name="actions.add" />
+              <span>{t('aiChat.newChat')}</span>
+            </button>
+            <button type="button" onClick={() => setMobileHistoryOpen(true)}>
+              <Icon name="nav.hamburger" />
+              <span>{lang === 'en' ? 'History' : '历史'}</span>
+            </button>
+            <button
+              type="button"
+              className={`ai-search__mobile-about-button ${aboutOpen ? 'active' : ''}`}
+              data-about-btn
+              aria-label={t('aiChat.about')}
+              title={t('aiChat.about')}
+              onClick={onToggleAbout}
+            >
+              <span aria-hidden="true">?</span>
+            </button>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
       {mobileHistoryOpen ? (
         <div className="ai-search__history-sheet" onClick={() => setMobileHistoryOpen(false)}>
           <div className="ai-search__history-sheet-panel" onClick={(event) => event.stopPropagation()}>

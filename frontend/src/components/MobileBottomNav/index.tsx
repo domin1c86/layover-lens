@@ -7,13 +7,14 @@ type TabKey = 'search' | 'ai' | 'favorites';
 interface MobileBottomNavProps {
   activeTab: TabKey;
   onTabChange: (tab: TabKey) => void;
+  showAiSearch: boolean;
 }
 
-export default function MobileBottomNav({ activeTab, onTabChange }: MobileBottomNavProps) {
+export default function MobileBottomNav({ activeTab, onTabChange, showAiSearch }: MobileBottomNavProps) {
   const { t } = useLocale();
   const tabs = [
     { key: 'search' as const, label: t('topNav.search'), icon: <Icon name="actions.search" size={18} /> },
-    { key: 'ai' as const, label: t('topNav.aiSearch'), icon: <span aria-hidden="true">AI</span> },
+    ...(showAiSearch ? [{ key: 'ai' as const, label: t('topNav.aiSearch'), icon: <span aria-hidden="true">AI</span> }] : []),
     { key: 'favorites' as const, label: t('topNav.favorites'), icon: <Icon name="actions.heart" size={18} /> },
   ];
 

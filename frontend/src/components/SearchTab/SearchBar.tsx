@@ -41,6 +41,16 @@ const HOT_CITY_NAMES = new Set([
   '郑州', '长沙', '天津', '苏州', '沈阳', '青岛', '厦门', '合肥',
 ]);
 
+function PickerCloseButton({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="picker-panel__close-footer">
+      <button type="button" className="picker-panel__close" onClick={onClose} aria-label="Close">
+        ×
+      </button>
+    </div>
+  );
+}
+
 function CityPicker({ cities, value, onChange, onClose, isOpen, cityGroups, lang }: {
   cities: City[];
   value: string;
@@ -99,6 +109,7 @@ function CityPicker({ cities, value, onChange, onClose, isOpen, cityGroups, lang
               </div>
             ))}
           </div>
+          <PickerCloseButton onClose={onClose} />
         </motion.div>
       )}
     </AnimatePresence>
@@ -174,6 +185,7 @@ function MultiCityPicker({ cities, selected, onChange, onClose, isOpen, cityGrou
           <div className="city-picker__footer">
             <button className="city-picker__confirm" onClick={onClose}>{confirmLabel}</button>
           </div>
+          <PickerCloseButton onClose={onClose} />
         </motion.div>
       )}
     </AnimatePresence>
@@ -207,6 +219,7 @@ function OptPicker({ value, onChange, onClose, isOpen, labels }: {
               {labels[o]}
             </div>
           ))}
+          <PickerCloseButton onClose={onClose} />
         </motion.div>
       )}
     </AnimatePresence>
@@ -240,6 +253,7 @@ function SelectPicker<T extends string>({ options, value, onChange, onClose, isO
               {o.label}
             </div>
           ))}
+          <PickerCloseButton onClose={onClose} />
         </motion.div>
       )}
     </AnimatePresence>
@@ -376,6 +390,7 @@ function CalendarPicker({ value, onChange, onClose, isOpen, lang, t }: {
               )}
             </div>
           </div>
+          <PickerCloseButton onClose={onClose} />
         </motion.div>
       )}
     </AnimatePresence>
@@ -794,6 +809,7 @@ export default function SearchBar({
             </div>
           </div>
         </div>
+        <PickerCloseButton onClose={() => setDrawerOpen(false)} />
       </motion.div>
         )}
     </AnimatePresence>

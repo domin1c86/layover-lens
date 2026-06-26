@@ -39,6 +39,11 @@
   --mobile-bottom-nav-height: 64px;
   --mobile-sticky-top: 64px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  --z-top-nav: 900;
+  --z-search-dock: 1000;
+  --z-top-nav-dropdown: 1200;
+  --z-modal: 1500;
 }
 
 /* ========================================

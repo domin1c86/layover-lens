@@ -77,6 +77,8 @@ export default function AiChatArea({
   const { lang, t } = useLocale();
   const isSessionBlocked = status === 'blocked';
   const inputDisabled = loading || disabled || isSessionBlocked;
+  const hasInput = input.trim().length > 0;
+  const sendDisabled = inputDisabled || !hasInput;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -237,7 +239,7 @@ export default function AiChatArea({
             onKeyDown={handleKeyDown}
             disabled={inputDisabled}
           />
-          <button className="ai-search__send" onClick={handleSend} disabled={inputDisabled}>
+          <button className="ai-search__send" onClick={handleSend} disabled={sendDisabled}>
             <Icon name="actions.send" />
           </button>
         </div>

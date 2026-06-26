@@ -68,6 +68,9 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: center;
+  text-align: center;
+  min-width: 0;
 }
 
 .search-bar__segment:not(:last-of-type)::after {
@@ -112,6 +115,10 @@
   color: var(--ink);
   line-height: 1.33;
   display: block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .search-bar__value {
@@ -121,6 +128,7 @@
   line-height: 1.43;
   display: block;
   margin-top: 2px;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -169,22 +177,32 @@
 
   .search-bar {
     max-width: 100%;
-    height: auto;
-    min-height: 0;
-    padding: 10px;
-    border-radius: var(--rounded-md);
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    align-items: stretch;
+    height: 56px;
+    min-height: 56px;
+    padding: 6px 6px 6px 12px;
+    border-radius: var(--rounded-full);
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  .search-bar.search-bar--compact-summary {
+    height: 100%;
+    min-height: 42px;
+    display: flex;
+    border-radius: var(--rounded-full);
+    padding: 0 8px 0 14px;
     gap: 8px;
   }
 
-  .search-bar--compact-summary {
-    min-height: 48px;
-    display: flex;
-    grid-template-columns: none;
-    border-radius: var(--rounded-full);
-    padding: 0 14px 0 18px;
+  .search-bar__summary-label {
+    font-size: 13px;
+  }
+
+  .search-bar__summary-icon {
+    width: 26px;
+    height: 26px;
+    flex-basis: 26px;
   }
 
   .search-bar__segment:nth-child(2),
@@ -194,31 +212,37 @@
   }
 
   .search-bar__segment {
+    flex: 1 1 0;
     min-width: 0;
-    padding: 10px 12px;
-    border: 1px solid var(--hairline-soft);
-    border-radius: var(--rounded-sm);
-    background: var(--surface-soft);
+    height: 44px;
+    padding: 6px 6px;
+    border: none;
+    border-radius: var(--rounded-full);
+    background: transparent;
   }
 
   .search-bar__segment:not(:last-of-type)::after {
-    display: none;
+    display: block;
+    height: 20px;
   }
 
   .search-bar__label {
-    font-size: 11px;
+    font-size: 10px;
+    line-height: 1.2;
   }
 
   .search-bar__value {
-    font-size: 14px;
+    font-size: 12px;
+    line-height: 1.25;
+    margin-top: 1px;
   }
 
   .search-bar__orb {
-    grid-column: 1 / -1;
-    width: 100%;
-    height: 44px;
-    margin-left: 0;
-    border-radius: var(--rounded-sm);
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    margin-left: 4px;
+    border-radius: var(--rounded-full);
   }
 }
 
@@ -261,19 +285,21 @@
 @media (max-width: 744px) {
   .advanced-search {
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    top: auto;
-    width: 100vw;
-    max-width: 100vw;
-    max-height: 82dvh;
+    left: 50%;
+    right: auto;
+    bottom: auto;
+    top: 60px;
+    width: min(420px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - var(--mobile-sticky-top) - var(--mobile-bottom-nav-height) - 104px - var(--safe-bottom));
     overflow-y: auto !important;
-    padding: 28px var(--mobile-page-padding) calc(24px + var(--safe-bottom)) !important;
+    overflow-x: hidden;
+    padding: 20px var(--mobile-page-padding) 0 !important;
     margin-top: 0 !important;
-    border-radius: 20px 20px 0 0;
-    z-index: 1000;
-    box-shadow: 0 -12px 36px rgba(0, 0, 0, 0.18);
+    border-radius: 20px;
+    z-index: 80;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.18);
+    transform: translateX(-50%);
   }
 }
 
@@ -412,6 +438,38 @@
   box-shadow: var(--shadow-card);
   z-index: 50;
   overflow: hidden;
+}
+
+.picker-panel__close-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  padding: 10px 12px calc(10px + var(--safe-bottom));
+  margin-top: auto;
+  border-top: 1px solid var(--hairline-soft);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--canvas) 88%, transparent), var(--canvas) 32%);
+  z-index: 2;
+}
+
+.picker-panel__close {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-full);
+  background: var(--canvas);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-card);
+}
+
+.picker-panel__close:hover {
+  background: var(--surface-soft);
 }
 
 .opt-picker {
@@ -685,30 +743,33 @@
     position: fixed;
     left: 50%;
     right: auto;
-    top: auto;
-    bottom: 0;
-    width: 100vw;
-    max-width: 100vw;
-    max-height: 82dvh;
+    top: 60px;
+    bottom: auto;
+    width: min(420px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - var(--mobile-sticky-top) - var(--mobile-bottom-nav-height) - 104px - var(--safe-bottom));
     overflow-y: auto;
-    border-radius: 20px 20px 0 0;
-    z-index: 1200;
-    box-shadow: 0 -12px 36px rgba(0, 0, 0, 0.18);
+    overflow-x: hidden;
+    border-radius: 20px;
+    z-index: 90;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.18);
   }
 
   .city-picker {
     min-width: 0;
-    max-width: 100vw;
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - var(--mobile-sticky-top) - var(--mobile-bottom-nav-height) - 104px - var(--safe-bottom));
   }
 
   .city-picker__grid {
     grid-template-columns: repeat(3, 1fr);
-    max-height: min(52dvh, 360px);
+    max-height: min(42dvh, 320px);
   }
 
   .calendar-picker {
     min-width: 0;
-    max-width: 100vw;
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - var(--mobile-sticky-top) - var(--mobile-bottom-nav-height) - 104px - var(--safe-bottom));
   }
 
   .calendar-picker__layout {
@@ -726,13 +787,39 @@
   .city-picker,
   .opt-picker {
     min-width: 0;
-    max-width: 100vw;
+    max-width: calc(100vw - 24px);
+  }
+
+  .opt-picker {
+    min-width: min(260px, calc(100vw - 24px));
   }
 }
 
 @media (max-width: 480px) {
   .search-bar {
-    grid-template-columns: 1fr;
+    height: 52px;
+    min-height: 52px;
+    padding: 5px 5px 5px 9px;
+  }
+
+  .search-bar__segment {
+    height: 40px;
+    padding: 5px 4px;
+  }
+
+  .search-bar__label {
+    font-size: 9px;
+  }
+
+  .search-bar__value {
+    font-size: 11px;
+  }
+
+  .search-bar__orb {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    margin-left: 3px;
   }
 
   .advanced-search__price {
@@ -746,6 +833,26 @@
 }
 
 @media (max-width: 360px) {
+  .search-bar {
+    padding-left: 7px;
+  }
+
+  .search-bar__segment {
+    padding-inline: 3px;
+  }
+
+  .search-bar__orb {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+  }
+
+  .search-bar__summary-icon {
+    width: 24px;
+    height: 24px;
+    flex-basis: 24px;
+  }
+
   .city-picker__grid {
     grid-template-columns: repeat(2, 1fr);
   }
