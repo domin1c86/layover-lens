@@ -34,6 +34,16 @@
   --space-lg: 24px;
   --space-xl: 32px;
   --space-section: 64px;
+
+  --mobile-page-padding: 16px;
+  --mobile-bottom-nav-height: 64px;
+  --mobile-sticky-top: 64px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  --z-top-nav: 900;
+  --z-search-dock: 1000;
+  --z-top-nav-dropdown: 1200;
+  --z-modal: 1500;
 }
 
 /* ========================================
@@ -51,6 +61,13 @@ body {
   background-color: var(--canvas);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  overflow-x: hidden;
 }
 
 button {
@@ -83,7 +100,19 @@ input, select {
   .container { padding: 0 40px; }
 }
 @media (max-width: 744px) {
-  .container { padding: 0 24px; }
+  .container { padding: 0 var(--mobile-page-padding); }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 360px) {
+  :root {
+    --mobile-page-padding: 12px;
+  }
 }
 
 /* ========================================

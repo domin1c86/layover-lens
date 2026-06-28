@@ -7,7 +7,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1100;
+  z-index: 1500;
   padding: 24px;
 }
 
@@ -259,6 +259,16 @@ html[data-theme="dark"] .auth-modal__switch-text {
 
   .auth-modal__dialog {
     max-width: 100%;
+    max-height: calc(100dvh - 24px);
     border-radius: 14px 14px 0 0;
+    padding-bottom: var(--safe-bottom);
+  }
+
+  .auth-modal__body {
+    overflow-y: auto;
+  }
+
+  .auth-modal__footer {
+    padding-bottom: 4px;
   }
 }

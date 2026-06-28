@@ -17,6 +17,10 @@ interface SearchBarProps {
   onOptimizeChange: (val: OptimizationTarget) => void;
   onSearch: (advancedFilters: AdvancedFilters) => void;
   loading: boolean;
+  mode?: 'expanded' | 'compact-summary';
+  variant?: 'desktop' | 'mobile';
+  onRequestExpand?: () => void;
+  forceCloseOverlaysSignal?: number;
 }
 
 export interface AdvancedFilters {
@@ -36,6 +40,16 @@ const HOT_CITY_NAMES = new Set([
   '北京', '上海', '广州', '深圳', '杭州', '成都', '南京', '武汉', '西安', '重庆',
   '郑州', '长沙', '天津', '苏州', '沈阳', '青岛', '厦门', '合肥',
 ]);
+
+function PickerCloseButton({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="picker-panel__close-footer">
+      <button type="button" className="picker-panel__close" onClick={onClose} aria-label="Close">
+        ×
+      </button>
+    </div>
+  );
+}
 
 function CityPicker({ cities, value, onChange, onClose, isOpen, cityGroups, lang }: {
   cities: City[];
@@ -95,6 +109,7 @@ function CityPicker({ cities, value, onChange, onClose, isOpen, cityGroups, lang
               </div>
             ))}
           </div>
+          <PickerCloseButton onClose={onClose} />
         </motion.div>
       )}
     </AnimatePresence>
@@ -170,6 +185,7 @@ function MultiCityPicker({ cities, selected, onChange, onClose, isOpen, cityGrou
           <div className="city-picker__footer">
             <button className="city-picker__confirm" onClick={onClose}>{confirmLabel}</button>
           </div>
+          <PickerCloseButton onClose={onClose} />
         </motion.div>
       )}
     </AnimatePresence>
@@ -203,6 +219,7 @@ function OptPicker({ value, onChange, onClose, isOpen, labels }: {
               {labels[o]}
             </div>
           ))}
+          <PickerCloseButton onClose={onClose} />
         </motion.div>
       )}
     </AnimatePresence>
@@ -236,6 +253,7 @@ function SelectPicker<T extends string>({ options, value, onChange, onClose, isO
               {o.label}
             </div>
           ))}
+          <PickerCloseButton onClose={onClose} />
         </motion.div>
       )}
     </AnimatePresence>
@@ -372,6 +390,7 @@ function CalendarPicker({ value, onChange, onClose, isOpen, lang, t }: {
               )}
             </div>
           </div>
+          <PickerCloseButton onClose={onClose} />
         </motion.div>
       )}
     </AnimatePresence>
@@ -392,6 +411,10 @@ export default function SearchBar({
   onOptimizeChange,
   onSearch,
   loading,
+  mode = 'expanded',
+  variant = 'desktop',
+  onRequestExpand,
+  forceCloseOverlaysSignal = 0,
 }: SearchBarProps) {
   const { lang, t } = useLocale();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -564,9 +587,55 @@ export default function SearchBar({
 
   const hasOpenSegment = fromOpen || toOpen || dateOpen || optOpen;
 
+  const closeOverlays = () => {
+    setFromOpen(false);
+    setToOpen(false);
+    setDateOpen(false);
+    setOptOpen(false);
+    setDrawerOpen(false);
+    setTransferOpen(false);
+    setTransferPickerOpen(false);
+    setTransferTimePickerOpen(false);
+  };
+
+  useEffect(() => {
+    closeOverlays();
+  }, [forceCloseOverlaysSignal]);
+
+  useEffect(() => {
+    if (mode === 'compact-summary') {
+      closeOverlays();
+    }
+  }, [mode]);
+
+  if (mode === 'compact-summary') {
+    return (
+      <div className={`search-combo search-combo--${variant} search-combo--compact-summary`}>
+        <motion.button
+          type="button"
+          className="search-bar search-bar--compact-summary"
+          onClick={onRequestExpand}
+          initial={false}
+          animate={{ opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
+        >
+          <span className="search-bar__summary-label">
+            {fromName} → {toName} · {formatDateLabel(date)}
+          </span>
+          <span className="search-bar__summary-icon">
+            <Icon name="actions.search" size={16} />
+          </span>
+        </motion.button>
+      </div>
+    );
+  }
+
   return (
-    <div className="search-combo">
-      <div className={`search-bar ${hasOpenSegment ? 'has-open-segment' : ''}`}>
+    <div className={`search-combo search-combo--${variant}`}>
+      <motion.div
+        className={`search-bar ${hasOpenSegment ? 'has-open-segment' : ''}`}
+        transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
+      >
         <div className={`search-bar__segment ${fromOpen ? 'open' : ''}`} ref={fromRef} onClick={() => togglePicker('from')}>
           <span className="search-bar__label">{t('searchBar.from')}</span>
           <span className="search-bar__value active">{fromName}</span>
@@ -619,7 +688,7 @@ export default function SearchBar({
         <button className="search-bar__orb" onClick={handleSearch} disabled={loading} title={t('searchBar.search')}>
           <Icon name="actions.search" size={20} />
         </button>
-      </div>
+      </motion.div>
 
       <AnimatePresence>
         {drawerOpen && (
@@ -740,6 +809,7 @@ export default function SearchBar({
             </div>
           </div>
         </div>
+        <PickerCloseButton onClose={() => setDrawerOpen(false)} />
       </motion.div>
         )}
     </AnimatePresence>

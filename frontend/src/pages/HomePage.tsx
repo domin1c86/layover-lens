@@ -1,18 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { City, OptimizationTarget, RoutePlan, RouteRecommendation, SearchRequest } from '../types';
 import { cityApi, searchApi } from '../services/api';
-import { useTheme } from '../context/ThemeContext';
+import { AI_SEARCH_ENABLED } from '../config/features';
 import { useLocale } from '../context/LocaleContext';
+import { useAuth } from '../context/AuthContext';
 import TopNav from '../components/TopNav';
 import SearchTab from '../components/SearchTab';
 import AiSearchTab from '../components/AiSearchTab';
 import FavoritesTab from '../components/FavoritesTab';
-import SearchBar, { type AdvancedFilters } from '../components/SearchTab/SearchBar';
+import { type AdvancedFilters } from '../components/SearchTab/SearchBar';
+import FloatingSearchDock from '../components/FloatingSearchDock';
 import Footer from '../components/Footer';
+import MobileBottomNav from '../components/MobileBottomNav';
 import './HomePage.css';
-
-const THREE_LINES = 24; // 一行高度，作为展开/缩小的阈值
-const COMPACT_TRANSITION_MS = 550;
 
 interface HomePageProps {
   onOpenSettings?: () => void
@@ -20,17 +20,21 @@ interface HomePageProps {
   onOpenRegister?: () => void
 }
 
+const DEFAULT_FROM_CITY_CODE = 'BJ';
+const DEFAULT_TO_CITY_CODE = 'SH';
+
 export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }: HomePageProps) {
-  const { isDark } = useTheme();
-  const { lang, t } = useLocale();
+  const { t } = useLocale();
+  const { isLoggedIn } = useAuth();
+  const showAiSearch = AI_SEARCH_ENABLED && isLoggedIn;
   const [activeTab, setActiveTab] = useState<'search' | 'ai' | 'favorites'>('search');
-  const [isCompact, setIsCompact] = useState(false);
+  const [searchDockCompact, setSearchDockCompact] = useState(false);
   const [aiFooterOpen, setAiFooterOpen] = useState(false);
   const footerRef = useRef<HTMLDivElement>(null);
 
   const [cities, setCities] = useState<City[]>([]);
-  const [fromCity, setFromCity] = useState('');
-  const [toCity, setToCity] = useState('');
+  const [fromCity, setFromCity] = useState(DEFAULT_FROM_CITY_CODE);
+  const [toCity, setToCity] = useState(DEFAULT_TO_CITY_CODE);
   const [date, setDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split('T')[0];
@@ -47,107 +51,28 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
   const [error, setError] = useState('');
   const [searched, setSearched] = useState(false);
 
-  const isTransitioning = useRef(false);
-  const lastScrollY = useRef(window.scrollY);
-  const activeTabRef = useRef(activeTab);
-  const prevActiveTabRef = useRef(activeTab);
-  const expandedAtRef = useRef(window.scrollY);
-  const transitionTimeoutRef = useRef<number | undefined>();
-
-  const startCompactTransition = useCallback((nextIsCompact: boolean) => {
-    isTransitioning.current = true;
-    if (transitionTimeoutRef.current !== undefined) {
-      window.clearTimeout(transitionTimeoutRef.current);
+  useEffect(() => {
+    if (!showAiSearch && activeTab === 'ai') {
+      setActiveTab('search');
+      setAiFooterOpen(false);
+      setSearchDockCompact(false);
+      return;
     }
-
-    transitionTimeoutRef.current = window.setTimeout(() => {
-      isTransitioning.current = false;
-      const currentY = window.scrollY;
-      lastScrollY.current = currentY;
-
-      if (!nextIsCompact) {
-        expandedAtRef.current = currentY;
-      }
-
-      transitionTimeoutRef.current = undefined;
-    }, COMPACT_TRANSITION_MS);
-  }, []);
-
-  useEffect(() => {
-    activeTabRef.current = activeTab;
-  }, [activeTab]);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      if (isTransitioning.current) return;
-
-      const y = window.scrollY;
-      lastScrollY.current = y;
-
-      setIsCompact((prev) => {
-        // AI 搜索标签页强制保持 compact
-        if (activeTabRef.current === 'ai') {
-          if (!prev) {
-            startCompactTransition(true);
-          }
-          return true;
-        }
-
-        const topBarHeight = prev ? 80 : 164;
-        const effectiveY = Math.max(0, y - topBarHeight);
-
-        let next = prev;
-        // 缩小：展开状态下，从展开点累计向下滚动 >= THREE_LINES 即触发，不限定当前位置
-        if (!prev && y - expandedAtRef.current >= THREE_LINES) {
-          next = true;
-        }
-        // 展开：缩小状态下，距离顶部小于 THREE_LINES 时触发
-        else if (prev && effectiveY < THREE_LINES) {
-          next = false;
-        }
-
-        if (next !== prev) {
-          startCompactTransition(next);
-        }
-        return next;
-      });
-    };
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    handleScroll();
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-      if (transitionTimeoutRef.current !== undefined) {
-        window.clearTimeout(transitionTimeoutRef.current);
-      }
-    };
-  }, [startCompactTransition]);
-
-  useEffect(() => {
-    if (prevActiveTabRef.current === activeTab) return;
-    prevActiveTabRef.current = activeTab;
-
-    if (activeTab === 'ai') {
-      setIsCompact(true);
-      startCompactTransition(true);
-    } else {
-      setIsCompact(false);
-      startCompactTransition(false);
-    }
-  }, [activeTab, startCompactTransition]);
-
-  useEffect(() => {
     if (activeTab !== 'ai') {
       setAiFooterOpen(false);
     }
-  }, [activeTab]);
+    if (activeTab !== 'search') {
+      setSearchDockCompact(false);
+    }
+  }, [activeTab, showAiSearch]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (!aiFooterOpen) return;
       const target = e.target as Node;
       if (footerRef.current?.contains(target)) return;
-      const aboutBtn = document.querySelector('[data-about-btn]');
-      if (aboutBtn?.contains(target)) return;
+      const aboutButtons = Array.from(document.querySelectorAll('[data-about-btn]'));
+      if (aboutButtons.some((button) => button.contains(target))) return;
       setAiFooterOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -157,8 +82,10 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
   useEffect(() => {
     cityApi.getCities().then((data) => {
       setCities(data);
-      if (data.length > 0) setFromCity(data[0].code);
-      if (data.length > 1) setToCity(data[1].code);
+      const defaultFrom = data.find((city) => city.code === DEFAULT_FROM_CITY_CODE || city.name === '北京');
+      const defaultTo = data.find((city) => city.code === DEFAULT_TO_CITY_CODE || city.name === '上海');
+      if (defaultFrom) setFromCity(defaultFrom.code);
+      if (defaultTo) setToCity(defaultTo.code);
     }).catch(() => setError(t('errors.loadCitiesFailed')));
   }, []);
 
@@ -235,55 +162,38 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
     setToCity(toCode);
   }, [cities]);
 
-  const handleCompactClick = useCallback(() => {
-    if (activeTab === 'ai') return;
-    setIsCompact(false);
-    startCompactTransition(false);
-  }, [activeTab, startCompactTransition]);
-
-  const fromCityName = cities.find((c) => c.code === fromCity)?.name || fromCity;
-  const toCityName = cities.find((c) => c.code === toCity)?.name || toCity;
-  const formatDateLabel = (iso: string) => {
-    if (!iso) return '';
-    const d = new Date(iso + 'T00:00:00');
-    if (lang === 'en') {
-      return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-    }
-    return `${d.getMonth() + 1}月${d.getDate()}日`;
-  };
-  const compactLabel = `${fromCityName} → ${toCityName} · ${formatDateLabel(date)}`;
+  const searchDockBehavior: 'scroll' | 'temporary' = activeTab === 'ai' ? 'temporary' : 'scroll';
+  const topNavSearchCompact = activeTab === 'ai' || searchDockCompact;
 
   return (
-    <div className="home-page">
+    <div className={`home-page home-page--${activeTab} ${activeTab === 'ai' && aiFooterOpen ? 'home-page--ai-footer-open' : ''}`}>
       <div className="home-page__main">
         <TopNav
           activeTab={activeTab}
           onTabChange={setActiveTab}
-          isCompact={isCompact}
-          compactLabel={compactLabel}
-          onCompactClick={handleCompactClick}
+          searchDockCompact={topNavSearchCompact}
+          showAiSearch={showAiSearch}
           onOpenSettings={onOpenSettings}
           onOpenLogin={onOpenLogin}
           onOpenRegister={onOpenRegister}
         />
 
-        <div className={`home-page__search-bar ${isCompact ? 'compact' : ''} ${isDark ? 'dark' : ''}`}>
-          <div className="container">
-            <SearchBar
-              cities={cities}
-              fromCity={fromCity}
-              toCity={toCity}
-              date={date}
-              optimize={optimize}
-              onFromChange={setFromCity}
-              onToChange={setToCity}
-              onDateChange={setDate}
-              onOptimizeChange={setOptimize}
-              onSearch={handleSearch}
-              loading={loading}
-            />
-          </div>
-        </div>
+        <div className={`home-page__search-placeholder home-page__search-placeholder--${activeTab}`} />
+        <FloatingSearchDock
+          behavior={searchDockBehavior}
+          cities={cities}
+          fromCity={fromCity}
+          toCity={toCity}
+          date={date}
+          optimize={optimize}
+          onFromChange={setFromCity}
+          onToChange={setToCity}
+          onDateChange={setDate}
+          onOptimizeChange={setOptimize}
+          onSearch={handleSearch}
+          loading={loading}
+          onCompactChange={setSearchDockCompact}
+        />
 
         <div className="home-page__content">
           {activeTab === 'search' && (
@@ -301,7 +211,7 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
               onQuickSearch={handleQuickSearch}
             />
           )}
-          {activeTab === 'ai' && (
+          {activeTab === 'ai' && showAiSearch && (
             <div className="home-page__tab-panel">
               <AiSearchTab aboutOpen={aiFooterOpen} onToggleAbout={() => setAiFooterOpen((prev) => !prev)} />
             </div>
@@ -309,6 +219,8 @@ export default function HomePage({ onOpenSettings, onOpenLogin, onOpenRegister }
           {activeTab === 'favorites' && <FavoritesTab />}
         </div>
       </div>
+
+      <MobileBottomNav activeTab={activeTab} onTabChange={setActiveTab} showAiSearch={showAiSearch} />
 
       {(activeTab !== 'ai' || aiFooterOpen) && (
         <div ref={footerRef}>

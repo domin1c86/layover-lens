@@ -6,7 +6,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 1500;
   padding: 24px;
 }
 
@@ -1022,9 +1022,10 @@
 
   .settings-modal__dialog {
     max-width: 100%;
-    max-height: 100%;
-    border-radius: 0;
-    height: 100%;
+    max-height: calc(100dvh - 12px);
+    border-radius: 20px 20px 0 0;
+    height: calc(100dvh - 12px);
+    padding-bottom: var(--safe-bottom);
   }
 
   .settings-modal__body {
@@ -1120,8 +1121,29 @@
   }
 
   .settings-modal__content {
-    padding: 24px;
+    padding: 24px var(--mobile-page-padding);
     scrollbar-gutter: auto;
+  }
+
+  .settings-modal__header {
+    padding: 18px var(--mobile-page-padding);
+  }
+
+  .settings-panel__row,
+  .settings-panel__avatar-row,
+  .settings-panel__preference-row,
+  .settings-panel__platform-item,
+  .settings-panel__device-row {
+    align-items: stretch;
+  }
+
+  .settings-panel__row,
+  .settings-panel__avatar-row {
+    flex-direction: column;
+  }
+
+  .settings-panel__btn {
+    width: 100%;
   }
 
   .settings-panel__device-header {
@@ -1141,6 +1163,37 @@
   }
 }
 
+@media (max-width: 480px) {
+  .forgot-modal__overlay,
+  .account-delete-modal__overlay,
+  .avatar-modal__overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .forgot-modal__dialog,
+  .account-delete-modal__dialog,
+  .avatar-modal__dialog,
+  .avatar-crop__dialog {
+    max-width: 100%;
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    border-radius: 20px 20px 0 0;
+    padding-bottom: var(--safe-bottom);
+  }
+
+  .forgot-modal__actions,
+  .account-delete-modal__actions,
+  .avatar-modal__actions {
+    flex-direction: column;
+  }
+
+  .avatar-crop__stage {
+    width: min(256px, calc(100vw - 48px));
+    height: min(256px, calc(100vw - 48px));
+  }
+}
+
 /* Forgot password modal */
 .forgot-modal__overlay {
   position: fixed;
@@ -1149,7 +1202,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1100;
+  z-index: 1500;
   padding: 24px;
 }
 
@@ -1256,7 +1309,7 @@
 .account-delete-modal__overlay {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  z-index: 1500;
   display: flex;
   align-items: center;
   justify-content: center;
